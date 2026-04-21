@@ -1,6 +1,12 @@
 ---
 name: non-violent-communication
-description: 非暴力溝通改寫工具（Nonviolent Communication Rewriter）。當使用者想改寫、潤色即將發送的訊息、電郵、或對話內容，使其更具同理心、減少指責與衝突時，觸發此 skill。觸發關鍵詞包括：「幫我改這封 email」、「這樣說會不會太衝」、「用 NVC 改寫」、「幫我說得好聽一點」、「這樣講會不會傷人」、或任何需要對外溝通但擔心語氣有問題的場合。
+description: >-
+  Nonviolent Communication (NVC) rewriter — rewrites drafts (emails, messages, reviews, conversations)
+  using Marshall Rosenberg's 4-step framework: Observation, Feelings, Needs, Request.
+  Use when the user wants to soften a message, reduce conflict, or improve tone before sending.
+  Triggers: "rewrite this email", "is this too harsh?", "use NVC", "make this sound nicer",
+  "will this hurt someone?", or any outbound communication where tone is a concern.
+  非暴力溝通改寫工具。觸發關鍵詞：「幫我改這封 email」、「這樣說會不會太衝」、「用 NVC 改寫」、「幫我說得好聽一點」、「這樣講會不會傷人」。
 ---
 
 # 非暴力溝通改寫 Skill（NVC Rewriter）
