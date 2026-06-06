@@ -127,3 +127,28 @@ refactor(web): <what changed>
 
 - `references/sanitization.md` — **mandatory** redaction rules + verification grep battery before sharing memories.
 - `references/platform-specs.md` — exact per-platform output formats and the ChatGPT char limit.
+
+
+## Relationship
+
+```
+~/.claude/CLAUDE.md  ──(去掉 orchestration 機制、抽哲學)──►  master personal-preferences.md
+    (CLI 真相來源)                                              (web 母本)
+                                                                    │ 衍生
+                                                                    ▼ 3 平台裁剪版
+```
+- 所以是 CLAUDE.md ⊃ master：master 是 CLAUDE.md 的「web 可用子集」。/garen-sync-setup 重生時就是讀 CLAUDE.md→產 master→產 3 裁剪版。
+- **`~/.codex/AGENTS.md` = CLAUDE.md 逐字複製**（3-line header + 全文）。是 **superset**（非 subset，與 master 相反）。**gitignored** — 被 `.gitignore` 預設 `*` 吃掉，與 `config.toml` 同理：每台機器由 `scripts/sync-agents-md.sh` 重生，不入版控（避免在 git 裡複製 CLAUDE.md 一份造成 drift）。
+
+完整關係：
+
+```
+CLAUDE.md ──逐字+header──► AGENTS.md   (Codex, gitignored, superset)
+    └──去 orchestration──► personal-preferences.md (master)
+                              └──► chatgpt / gemini / claude-ai 裁剪版
+```
+
+- **⚠ 沒有任何東西自動同步。** 改了 `CLAUDE.md` 後，**兩個都要重跑**，否則下游 stale：
+  1. `/garen-sync-setup` → 重生 master + 3 trims
+  2. `bash ~/sync-setup/scripts/sync-agents-md.sh` → 重生 AGENTS.md
+- 對應的 web 端說明同步寫在 `6-integrated/README.md`（paste 位置 + 此關係圖）。
