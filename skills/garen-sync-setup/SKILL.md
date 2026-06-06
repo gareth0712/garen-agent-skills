@@ -87,7 +87,8 @@ fragile across git + Mac, so we **copy** via a script (single home, DRY):
 bash ~/sync-setup/scripts/sync-agents-md.sh
 ```
 
-It writes a verbatim copy of CLAUDE.md into AGENTS.md with a "do not edit directly" header.
+It copies CLAUDE.md into AGENTS.md, mapping Claude model names to GPT (Opus→GPT-5.5, Sonnet→GPT-5.4,
+since Codex runs GPT), plus a "do not edit directly" header.
 **Re-run this whenever CLAUDE.md changes.** Verify: `wc -l` of AGENTS.md = CLAUDE.md + 3 header lines.
 
 ## Core task C: Refresh device-sync READMEs (1-plugins … 4-hooks)
@@ -138,12 +139,12 @@ refactor(web): <what changed>
                                                                     ▼ 3 平台裁剪版
 ```
 - 所以是 CLAUDE.md ⊃ master：master 是 CLAUDE.md 的「web 可用子集」。/garen-sync-setup 重生時就是讀 CLAUDE.md→產 master→產 3 裁剪版。
-- **`~/.codex/AGENTS.md` = CLAUDE.md 逐字複製**（3-line header + 全文）。是 **superset**（非 subset，與 master 相反）。**gitignored** — 被 `.gitignore` 預設 `*` 吃掉，與 `config.toml` 同理：每台機器由 `scripts/sync-agents-md.sh` 重生，不入版控（避免在 git 裡複製 CLAUDE.md 一份造成 drift）。
+- **`~/.codex/AGENTS.md` ≈ CLAUDE.md**（近乎逐字：3-line header + 全文，但 Claude model 名映射成 GPT — Opus→GPT-5.5、Sonnet→GPT-5.4，因為 Codex 跑 GPT）。是 **superset**（非 subset，與 master 相反）。**gitignored** — 被 `.gitignore` 預設 `*` 吃掉，與 `config.toml` 同理：每台機器由 `scripts/sync-agents-md.sh` 重生，不入版控（避免在 git 裡複製 CLAUDE.md 一份造成 drift）。
 
 完整關係：
 
 ```
-CLAUDE.md ──逐字+header──► AGENTS.md   (Codex, gitignored, superset)
+CLAUDE.md ──header + model名映射(Opus→GPT-5.5/Sonnet→GPT-5.4)──► AGENTS.md (Codex, gitignored, superset)
     └──去 orchestration──► personal-preferences.md (master)
                               └──► chatgpt / gemini / claude-ai 裁剪版
 ```
