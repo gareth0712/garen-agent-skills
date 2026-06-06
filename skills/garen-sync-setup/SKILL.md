@@ -82,9 +82,9 @@ This keeps `5-sources/` root clear so the user knows anything there next time is
 
 `6-integrated/skills/coding/SKILL.md` is the web-LLM equivalent of `~/.claude/rules/` — web LLMs have
 no auto-loaded `rules/`, so coding standards ship as a skill the user adds manually (Claude.ai Skills /
-ChatGPT Project / Gemini Gem). When `~/.claude/rules/` changes, regenerate this file to match. It is a
-hand-added skill, NOT pasted like the preference files — see `6-integrated/README.md` for the per-platform
-"how to add" table.
+ChatGPT Project / Gemini Gem). It is a hand-added skill, NOT pasted like the preference files — see
+`6-integrated/README.md` for the per-platform "how to add" table. **To regenerate it from the rules,
+run Core task D.**
 
 ## Core task B: Sync AGENTS.md with CLAUDE.md
 
@@ -106,6 +106,32 @@ any cwd on both OSes.
 Each README is the install list that keeps all 4 devices' plugins/mcps/skills/hooks identical.
 When asked to refresh, derive each from what is **actually installed** on the current machine
 (don't hand-edit from memory), so a fresh device can reproduce the setup from the README.
+
+## Core task D: Regenerate the coding skill from `~/.claude/rules/`
+
+`6-integrated/skills/coding/SKILL.md` is the web mirror of the Claude Code coding rules. Web LLMs have
+no auto-loaded `~/.claude/rules/`, so this skill is added by hand (see README's per-platform table).
+Regenerate it whenever `~/.claude/rules/` changes — it must NOT drift from the rules.
+
+**Sources** (read all): `~/.claude/rules/common/{coding-style,testing,security,patterns,git-workflow}.md`
+plus the user's primary language `~/.claude/rules/typescript/{coding-style,testing,patterns,security}.md`.
+(Other language dirs — python/golang/swift — only if the user asks for them.)
+
+**INCLUDE**: coding standards, immutability, error handling, input validation, file organization,
+design patterns, testing requirements, security checklist, commit format, code-quality checklist —
+each with a short TypeScript code example (the user's primary stack).
+
+**EXCLUDE** (CLI-only — noise in a web coding skill):
+- `hooks.md` (Claude Code PostToolUse hooks), `agents.md` (subagent orchestration),
+  `skill-development.md`, `performance.md` (model selection).
+- `speculation.md` — that is the *verification discipline*; it already lives in the preference files,
+  not the coding skill. Don't duplicate it here.
+- Anything mentioning `~/.claude/`, subagents, hooks, or model tiers.
+
+**Output**: overwrite `6-integrated/skills/coding/SKILL.md`. Self-contained standards doc a web LLM can
+follow with zero Claude-Code context. Title: `# Coding Standards & Patterns`.
+
+Verify: `grep -inE "subagent|hook|haiku|sonnet|orchestrat|~/.claude" skills/coding/SKILL.md` → nothing.
 
 ## Verification (always run before reporting done)
 
