@@ -78,17 +78,27 @@ lifestyle, legal/compliance, dated events).
 After integrating, `git mv` every consumed file in `5-sources/` into `5-sources/obsolete/`.
 This keeps `5-sources/` root clear so the user knows anything there next time is new.
 
+### A4. Coding skill (web mirror of `~/.claude/rules/`)
+
+`6-integrated/skills/coding/SKILL.md` is the web-LLM equivalent of `~/.claude/rules/` — web LLMs have
+no auto-loaded `rules/`, so coding standards ship as a skill the user adds manually (Claude.ai Skills /
+ChatGPT Project / Gemini Gem). When `~/.claude/rules/` changes, regenerate this file to match. It is a
+hand-added skill, NOT pasted like the preference files — see `6-integrated/README.md` for the per-platform
+"how to add" table.
+
 ## Core task B: Sync AGENTS.md with CLAUDE.md
 
 `~/.codex/AGENTS.md` must carry the same preferences as `~/.claude/CLAUDE.md`. Windows symlinks are
 fragile across git + Mac, so we **copy** via a script (single home, DRY):
 
 ```bash
-bash ~/sync-setup/scripts/sync-agents-md.sh
+bash ~/sync-setup/6-integrated/scripts/1-sync-agents-md.sh    # Mac / Git Bash
+# Windows: ~/sync-setup/6-integrated/scripts/1-sync-agents-md.bat (thin wrapper that calls the .sh)
 ```
 
 It copies CLAUDE.md into AGENTS.md, mapping Claude model names to GPT (Opus→GPT-5.5, Sonnet→GPT-5.4,
-since Codex runs GPT), plus a "do not edit directly" header.
+since Codex runs GPT), plus a "do not edit directly" header. Paths use `~`/`$HOME` so they work from
+any cwd on both OSes.
 **Re-run this whenever CLAUDE.md changes.** Verify: `wc -l` of AGENTS.md = CLAUDE.md + 3 header lines.
 
 ## Core task C: Refresh device-sync READMEs (1-plugins … 4-hooks)
@@ -139,7 +149,7 @@ refactor(web): <what changed>
                                                                     ▼ 3 平台裁剪版
 ```
 - 所以是 CLAUDE.md ⊃ master：master 是 CLAUDE.md 的「web 可用子集」。/garen-sync-setup 重生時就是讀 CLAUDE.md→產 master→產 3 裁剪版。
-- **`~/.codex/AGENTS.md` ≈ CLAUDE.md**（近乎逐字：3-line header + 全文，但 Claude model 名映射成 GPT — Opus→GPT-5.5、Sonnet→GPT-5.4，因為 Codex 跑 GPT）。是 **superset**（非 subset，與 master 相反）。**gitignored** — 被 `.gitignore` 預設 `*` 吃掉，與 `config.toml` 同理：每台機器由 `scripts/sync-agents-md.sh` 重生，不入版控（避免在 git 裡複製 CLAUDE.md 一份造成 drift）。
+- **`~/.codex/AGENTS.md` ≈ CLAUDE.md**（近乎逐字：3-line header + 全文，但 Claude model 名映射成 GPT — Opus→GPT-5.5、Sonnet→GPT-5.4，因為 Codex 跑 GPT）。是 **superset**（非 subset，與 master 相反）。**gitignored** — 被 `.gitignore` 預設 `*` 吃掉，與 `config.toml` 同理：每台機器由 `6-integrated/scripts/1-sync-agents-md.sh`（Windows: `.bat`）重生，不入版控（避免在 git 裡複製 CLAUDE.md 一份造成 drift）。
 
 完整關係：
 
@@ -151,5 +161,5 @@ CLAUDE.md ──header + model名映射(Opus→GPT-5.5/Sonnet→GPT-5.4)──�
 
 - **⚠ 沒有任何東西自動同步。** 改了 `CLAUDE.md` 後，**兩個都要重跑**，否則下游 stale：
   1. `/garen-sync-setup` → 重生 master + 3 trims
-  2. `bash ~/sync-setup/scripts/sync-agents-md.sh` → 重生 AGENTS.md
+  2. `bash ~/sync-setup/6-integrated/scripts/1-sync-agents-md.sh`（Windows `.bat`）→ 重生 AGENTS.md
 - 對應的 web 端說明同步寫在 `6-integrated/README.md`（paste 位置 + 此關係圖）。
