@@ -20,7 +20,7 @@
       "expected_output": "A repository-evidence-driven targeted or full Discovery decision with explicit depth factors, bounded packets, owned unknowns, freshness/lineage state, and backward/forward routing without premature system design.",
       "files": [],
       "expectations": [
-        "The depth decision is exactly skip, targeted, or full and DISCOVERY.md records evidence rows named greenfield_status, ambiguity, blast_radius, irreversibility, and artifact_freshness.",
+        "The depth decision is exactly `targeted` or `full`; it explicitly rejects `skip`. DISCOVERY.md records evidence rows named greenfield_status, ambiguity, blast_radius, irreversibility, and artifact_freshness.",
         "Repository and instruction paths are inspected before any focused user question; unavailable evidence is labeled rather than invented.",
         "Candidate blind spots are project-specific and tied to named billing decisions; no claim says unknown unknowns are exhaustive.",
         "Every D-### packet names decision_unlocked, owner, disposition, Small/1 or Medium/2 sizing, dependencies, observable verification, fallback, and a bounded stop condition; Large is split before dispatch.",

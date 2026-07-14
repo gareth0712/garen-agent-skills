@@ -1,6 +1,6 @@
 ---
 name: autonomous-project-discovery
-description: Use when an insufficiently framed greenfield project, product, repository, or substantial new subsystem needs exploration before planning; skip for small, well-specified work in an understood existing project.
+description: Use when an insufficiently framed greenfield project, product, repository, or substantial new subsystem needs exploration before planning, or when the user asks to explore whether an idea should exist; skip for small, well-specified work in an understood existing project.
 ---
 
 # Autonomous Project Discovery
@@ -13,16 +13,15 @@ Discovery produces canonical `DISCOVERY.md` and `AGENT-STATE.md`. It may create 
 
 ## Required references
 
-Before dispatching any worker, read all six references completely:
+Load the six binding references progressively. A deferred read becomes required when its pointer fires:
 
-1. [Artifact protocol](references/artifact-protocol.md) — run root, lineage, single-writer state, report ordering, recovery, and worker return contract.
-2. [Discovery method](references/discovery-method.md) — territory inspection, depth, unknowns, decision policy, user gates, readiness, and stop condition.
-3. [Harness adapters](references/harness-adapters.md) — map semantic actions to capabilities actually exposed by the host.
-4. [Launcher template](references/launcher-template.md) — collect authority and safe defaults when starting a run.
-5. [State templates](references/state-templates.md) — write complete control, scope, discovery, packet, report, and handoff artifacts.
-6. [Work sizing](references/work-sizing.md) — size packets, order dependencies, enforce budgets, and cut over safely.
+1. During bootstrap, read [Artifact protocol](references/artifact-protocol.md) and [Harness adapters](references/harness-adapters.md) completely before writing run state or dispatching a worker.
+2. Before territory, depth, framing, unknown, gate, or readiness decisions, read [Discovery method](references/discovery-method.md) completely.
+3. Before packet decomposition, dependency ordering, dispatch, budget cutover, or retry decisions, read [Work sizing](references/work-sizing.md) completely.
+4. Before writing or updating an artifact, read that artifact's complete section in [State templates](references/state-templates.md); read additional sections only when their artifact is needed.
+5. Read [Launcher template](references/launcher-template.md) completely only when starting from it or when the user requests a copyable launcher prompt.
 
-Treat those files as binding parts of this skill. If they conflict, apply the safer boundary and record the conflict as `blocked`; do not invent a compatibility behavior.
+Treat every loaded rule as binding. If the references conflict, apply the safer boundary and record the conflict as `blocked`; do not invent a compatibility behavior.
 
 ## Activation boundary
 

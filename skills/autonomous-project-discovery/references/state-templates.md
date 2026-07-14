@@ -46,10 +46,6 @@ orchestrator_requested_model: {user preference or highest-reasoning preference}
 orchestrator_effective_model: {confirmed model ID | host_default}
 orchestrator_fallback_reason: {none when confirmed | observed selector limitation}
 
-| worker_or_packet | requested_model | effective_model | fallback_reason |
-|---|---|---|---|
-| D-001 | {requested preference} | {confirmed model ID | host_default} | {none when confirmed | non-empty observed reason} |
-
 ## Instructions and repository baseline
 
 applicable_instruction_paths:
@@ -99,9 +95,9 @@ remediation_cycles_this_session: {0 | 1 | 2}
 
 ## Packets
 
-| packet | decision_unlocked | size | weight | dependencies | status | report | evidence | retry_count |
-|---|---|---|---:|---|---|---|---|---:|
-| D-001 | {named decision} | {Small | Medium} | {1 | 2} | {verified packet IDs | none} | {pending | in_progress | verified | blocked | superseded} | reports/D-001-report.md | evidence/{bounded evidence path} | {0 | 1 | 2} |
+| packet | decision_unlocked | size | weight | dependencies | status | report | evidence | requested_model | effective_model | fallback_reason | retry_count |
+|---|---|---|---:|---|---|---|---|---|---|---|---:|
+| D-001 | {named decision} | {Small | Medium} | {1 | 2} | {verified packet IDs | none} | {pending | in_progress | verified | blocked | superseded} | reports/D-001-report.md | evidence/{bounded evidence path} | {requested preference} | {confirmed model ID | host_default} | {none when confirmed | non-empty observed reason} | {0 | 1 | 2} |
 
 ## Human gates and UAT
 
@@ -301,7 +297,6 @@ Planning readiness: {READY | NOT_READY}
 # Discovery Packet D-{sequence}
 
 packet_id: D-{sequence}
-status: pending
 primary_outcome: {one observable outcome}
 decision_unlocked: {one named decision}
 owner: {orchestrator-assigned owner}
