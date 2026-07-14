@@ -71,20 +71,67 @@ def is_relative_to(path: Path, root: Path) -> bool:
         return False
 
 
-def snapshot_files(root: Path) -> dict[str, dict[str, Any]]:
+def snapshot_files(
+    root: Path,
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]]]:
     if not root.exists():
-        return {}
+        return {}, []
     result: dict[str, dict[str, Any]] = {}
-    for path in sorted(item for item in root.rglob("*") if item.is_file()):
-        stat = path.stat()
-        relative = path.relative_to(root).as_posix()
+    deferred: list[dict[str, str]] = []
+    try:
+        candidates = sorted(root.rglob("*"))
+    except OSError:
+        return {}, [{"path": ".", "reason": "root_enumeration_unavailable"}]
+    for path in candidates:
+        try:
+            if not path.is_file():
+                continue
+            relative = path.relative_to(root).as_posix()
+            before = path.stat()
+            digest = sha256(path)
+            after = path.stat()
+        except FileNotFoundError:
+            relative = path.relative_to(root).as_posix()
+            deferred.append({"path": relative, "reason": "path_disappeared"})
+            continue
+        except OSError:
+            relative = path.relative_to(root).as_posix()
+            deferred.append({"path": relative, "reason": "path_unreadable"})
+            continue
+        if (
+            (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
+            or before.st_size != after.st_size
+            or before.st_mtime_ns != after.st_mtime_ns
+        ):
+            deferred.append({"path": relative, "reason": "path_changed_during_sample"})
+            continue
         result[relative] = {
             "absolute_path": str(path),
-            "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-            "sha256": sha256(path),
+            "size": after.st_size,
+            "mtime_ns": after.st_mtime_ns,
+            "sha256": digest,
         }
-    return result
+    return result, deferred
+
+
+def preserve_deferred_previous_files(
+    current: dict[str, dict[str, Any]],
+    previous: dict[str, dict[str, Any]],
+    deferred: list[dict[str, str]],
+) -> dict[str, dict[str, Any]]:
+    if any(
+        item["path"] == "." and item["reason"] == "root_enumeration_unavailable"
+        for item in deferred
+    ):
+        preserved = dict(previous)
+        preserved.update(current)
+        return preserved
+    preserved = dict(current)
+    for item in deferred:
+        path = item["path"]
+        if path in previous:
+            preserved[path] = previous[path]
+    return preserved
 
 
 def packet_from(*values: str | None) -> str | None:
@@ -108,7 +155,7 @@ def classify_file(relative: str) -> str:
         return "orchestrator_postwrite_containment"
     if "/evidence/" in f"/{lowered}":
         return "worker_evidence"
-    if name == "events.jsonl":
+    if lowered == "events.jsonl":
         return "production_events"
     if name == "agent-state.md":
         return "control_state"
@@ -134,9 +181,8 @@ def parse_timestamp(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def parse_packet_table(path: Path) -> dict[str, dict[str, str]]:
+def parse_packet_table(text: str) -> dict[str, dict[str, str]]:
     """Read the canonical Packets markdown table from root AGENT-STATE.md."""
-    text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
     in_packets = False
     header: list[str] | None = None
@@ -197,6 +243,10 @@ class Audit:
         self.production_lines_seen: dict[str, int] = {}
         self.production_streams: dict[str, dict[str, Any]] = {}
         self.production_claims: list[dict[str, Any]] = []
+        self.production_read_deferred: dict[str, str] = {}
+        self.deferred_file_observations: dict[str, str] = {}
+        self.deferred_file_observation_count = 0
+        self.secondary_read_deferred: dict[str, str] = {}
         self.control_lines_seen = 0
         self.control_line_hashes: list[str] = []
         self.control_append_only_valid = True
@@ -223,7 +273,28 @@ class Audit:
             handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
 
     def observe_files(self) -> None:
-        current = snapshot_files(self.output)
+        current, deferred = snapshot_files(self.output)
+        next_deferred = {item["path"]: item["reason"] for item in deferred}
+        for path, reason in sorted(next_deferred.items()):
+            if self.deferred_file_observations.get(path) == reason:
+                continue
+            self.deferred_file_observation_count += 1
+            self.emit(
+                "output_file_observation_deferred",
+                path=path,
+                reason=reason,
+            )
+        for path, prior_reason in sorted(self.deferred_file_observations.items()):
+            if path in next_deferred:
+                continue
+            self.emit(
+                "output_file_observation_deferred_resolved",
+                path=path,
+                prior_reason=prior_reason,
+                resolution="stable_sample" if path in current else "path_no_longer_present",
+            )
+        self.deferred_file_observations = next_deferred
+        current = preserve_deferred_previous_files(current, self.files, deferred)
         changed = [
             (relative, metadata)
             for relative, metadata in current.items()
@@ -263,7 +334,11 @@ class Audit:
     def observe_canonical_state(self, current: dict[str, dict[str, Any]]) -> None:
         metadata = current.get("AGENT-STATE.md")
         previous = self.files.get("AGENT-STATE.md")
-        if metadata is None or (previous is not None and previous["sha256"] == metadata["sha256"]):
+        if metadata is None or (
+            previous is not None
+            and previous["sha256"] == metadata["sha256"]
+            and "AGENT-STATE.md" not in self.secondary_read_deferred
+        ):
             return
         state_path = self.output / "AGENT-STATE.md"
         state_write_event = next(
@@ -278,7 +353,16 @@ class Audit:
         )
         if state_write_event is None:
             return
-        rows = parse_packet_table(state_path)
+        try:
+            state_bytes = state_path.read_bytes()
+        except OSError:
+            self._defer_secondary_read("AGENT-STATE.md", "path_unreadable_after_snapshot")
+            return
+        if hashlib.sha256(state_bytes).hexdigest() != metadata["sha256"]:
+            self._defer_secondary_read("AGENT-STATE.md", "path_changed_after_snapshot")
+            return
+        self._resolve_secondary_read("AGENT-STATE.md")
+        rows = parse_packet_table(state_bytes.decode("utf-8", errors="replace"))
         for packet_id, row in sorted(rows.items()):
             status = row["status"]
             prior_row = self.packet_rows.get(packet_id)
@@ -335,29 +419,86 @@ class Audit:
             )
             del self.packet_rows[packet_id]
 
+    def _defer_secondary_read(self, path: str, reason: str) -> None:
+        if self.secondary_read_deferred.get(path) != reason:
+            self.emit("output_secondary_read_deferred", path=path, reason=reason)
+        self.secondary_read_deferred[path] = reason
+
+    def _resolve_secondary_read(self, path: str) -> None:
+        prior_reason = self.secondary_read_deferred.pop(path, None)
+        if prior_reason is not None:
+            self.emit(
+                "output_secondary_read_deferred_resolved",
+                path=path,
+                prior_reason=prior_reason,
+            )
+
     def observe_production_events(self) -> None:
-        for path in sorted(self.output.rglob("EVENTS.jsonl")) if self.output.exists() else []:
-            relative = path.relative_to(self.output).as_posix()
+        path = self.output / "EVENTS.jsonl"
+        relative = "EVENTS.jsonl"
+        try:
+            canonical_exists = path.is_file()
+        except OSError:
+            canonical_exists = True
+        if not canonical_exists:
+            stream = self.production_streams.get(relative)
+            if stream is not None and stream["observed_line_count"]:
+                stream["read_observation_complete"] = False
+                stream["append_only_valid"] = False
+                if "stream_missing_after_observation" not in stream["errors"]:
+                    stream["errors"].append("stream_missing_after_observation")
+                    self.emit("production_stream_missing", path=relative)
+            return
+
+        stream = self.production_streams.setdefault(
+            relative,
+            {
+                "observed_line_count": 0,
+                "parse_valid": True,
+                "append_only_valid": True,
+                "source_sequence_valid": True,
+                "source_timestamps_valid": True,
+                "references_valid": True,
+                "read_observation_complete": False,
+                "last_source_seq": None,
+                "last_source_timestamp": None,
+                "line_hashes": [],
+                "errors": [],
+            },
+        )
+        try:
             raw_text = path.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            stream["read_observation_complete"] = False
+            reason = "path_disappeared"
+            if self.production_read_deferred.get(relative) != reason:
+                self.emit("production_stream_read_deferred", path=relative, reason=reason)
+            self.production_read_deferred[relative] = reason
+            return
+        except OSError:
+            stream["read_observation_complete"] = False
+            reason = "path_unreadable"
+            if self.production_read_deferred.get(relative) != reason:
+                self.emit("production_stream_read_deferred", path=relative, reason=reason)
+            self.production_read_deferred[relative] = reason
+            return
+        stream["read_observation_complete"] = True
+        prior_read_defer = self.production_read_deferred.pop(relative, None)
+        if prior_read_defer is not None:
+            self.emit(
+                "production_stream_read_deferred_resolved",
+                path=relative,
+                prior_reason=prior_read_defer,
+            )
+        for _canonical_path in (path,):
             lines = raw_text.splitlines()
             if raw_text and not raw_text.endswith(("\n", "\r")):
+                stream["parse_valid"] = False
+                if "incomplete_terminal_record" not in stream["errors"]:
+                    stream["errors"].append("incomplete_terminal_record")
+                    self.emit("production_stream_incomplete_record", path=relative)
                 lines = lines[:-1]
             start = self.production_lines_seen.get(relative, 0)
-            stream = self.production_streams.setdefault(
-                relative,
-                {
-                    "observed_line_count": 0,
-                    "parse_valid": True,
-                    "append_only_valid": True,
-                    "source_sequence_valid": True,
-                    "source_timestamps_valid": True,
-                    "references_valid": True,
-                    "last_source_seq": None,
-                    "last_source_timestamp": None,
-                    "line_hashes": [],
-                    "errors": [],
-                },
-            )
             current_hashes = [hashlib.sha256(line.encode("utf-8")).hexdigest() for line in lines]
             previous_hashes = stream["line_hashes"]
             prefix_length = min(start, len(lines))
@@ -485,7 +626,20 @@ class Audit:
             if not is_relative_to(candidate, self.output) or not candidate.is_file():
                 errors.append(f"{prefix}_path_outside_or_not_file")
                 continue
-            observed_hash = sha256(candidate)
+            try:
+                before = candidate.stat()
+                observed_hash = sha256(candidate)
+                after = candidate.stat()
+            except OSError:
+                errors.append(f"{prefix}_read_failed")
+                continue
+            if (
+                (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
+                or before.st_size != after.st_size
+                or before.st_mtime_ns != after.st_mtime_ns
+            ):
+                errors.append(f"{prefix}_changed_during_hash")
+                continue
             declared_hash = reference.get("sha256")
             declared_revision = reference.get("revision")
             validation_kind: str | None = None
@@ -904,7 +1058,8 @@ class Audit:
                 for key, value in stream.items()
             }
             files[path]["valid"] = bool(
-                stream["parse_valid"]
+                stream["read_observation_complete"]
+                and stream["parse_valid"]
                 and stream["append_only_valid"]
                 and stream["source_sequence_valid"]
                 and stream["source_timestamps_valid"]
@@ -1064,6 +1219,27 @@ class Audit:
                 "accepted_control_count": self.control_last_seq,
                 "secret_environment_variable": CONTROL_SECRET_ENV,
                 "secret_persisted": False,
+            },
+            "observation_integrity": {
+                "deferred_observation_count": self.deferred_file_observation_count,
+                "unresolved_paths": [
+                    {"path": path, "reason": reason}
+                    for path, reason in sorted(self.deferred_file_observations.items())
+                ],
+                "unresolved_production_reads": [
+                    {"path": path, "reason": reason}
+                    for path, reason in sorted(self.production_read_deferred.items())
+                ],
+                "unresolved_secondary_reads": [
+                    {"path": path, "reason": reason}
+                    for path, reason in sorted(self.secondary_read_deferred.items())
+                ],
+                "complete_at_finalize": (
+                    not self.deferred_file_observations
+                    and not self.production_read_deferred
+                    and not self.secondary_read_deferred
+                ),
+                "note": "A same-poll disappearance/change is deferred rather than treated as a stable byte sample; every defer/resolution is runner-owned evidence.",
             },
             "observation_scope": {
                 "observed": [

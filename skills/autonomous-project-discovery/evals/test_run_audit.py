@@ -14,14 +14,17 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable
+from unittest import mock
 
 
 HERE = Path(__file__).resolve().parent
 OBSERVER = HERE / "run_audit.py"
+APPEND_HELPER = HERE.parent / "scripts" / "append_event.py"
 SECRET_ENV = "DISCOVERY_RUNNER_AUDIT_HMAC_KEY"
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
 
+import run_audit as audit_module  # noqa: E402
 from run_audit import classify_file  # noqa: E402
 
 
@@ -258,6 +261,214 @@ def test_invalid_root_relationships_are_rejected() -> None:
             )
             assert result.returncode != 0
             assert "physically disjoint siblings" in result.stderr
+
+
+def test_snapshot_files_defers_a_path_deleted_during_hash() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-snapshot-race-") as raw:
+        root = Path(raw).resolve()
+        transient = root / "transient.txt"
+        transient.write_text("ephemeral\n", encoding="utf-8")
+
+        def delete_during_hash(path: Path) -> str:
+            assert path == transient
+            path.unlink()
+            raise FileNotFoundError(path)
+
+        with mock.patch.object(audit_module, "sha256", delete_during_hash):
+            files, deferred = audit_module.snapshot_files(root)
+
+        assert files == {}
+        assert deferred == [{"path": "transient.txt", "reason": "path_disappeared"}]
+
+
+def test_deferred_path_preserves_prior_stable_sample() -> None:
+    prior = {
+        "AGENT-STATE.md": {
+            "absolute_path": "C:/fixture/AGENT-STATE.md",
+            "size": 10,
+            "mtime_ns": 1,
+            "sha256": "a" * 64,
+        }
+    }
+    merged = audit_module.preserve_deferred_previous_files(
+        {}, prior, [{"path": "AGENT-STATE.md", "reason": "path_changed_during_sample"}]
+    )
+    assert merged == prior
+
+
+def test_root_enumeration_defer_preserves_history_then_real_deletion_resets() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-root-enumeration-") as raw:
+        repo = Path(raw).resolve()
+        initialize_repo(repo)
+        output, audit_root = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+        output.mkdir(parents=True)
+        audit_root.mkdir(parents=True)
+        observer = audit_module.Audit(
+            repo, output, audit_root, audit_root / "STOP",
+            audit_root / "runner-control.jsonl", b"r" * 32, 30,
+        )
+        state = output / "AGENT-STATE.md"
+        state.write_text(state_text("in_progress"), encoding="utf-8")
+        observer.observe_files()
+        prior_files = dict(observer.files)
+        assert observer.packet_rows["D-001"]["status"] == "in_progress"
+
+        with mock.patch.object(
+            audit_module,
+            "snapshot_files",
+            return_value=({}, [{"path": ".", "reason": "root_enumeration_unavailable"}]),
+        ):
+            observer.observe_files()
+
+        assert observer.files == prior_files
+        assert observer.packet_rows["D-001"]["status"] == "in_progress"
+        assert observer.state_epoch == 0
+        events_after_defer = read_events(audit_root)
+        assert not any(item["event_type"] == "output_file_deleted" for item in events_after_defer)
+        assert not any(item["event_type"] == "runner_state_history_reset" for item in events_after_defer)
+
+        state.unlink()
+        observer.observe_files()
+        assert observer.files == {}
+        assert observer.packet_rows == {}
+        assert observer.state_epoch == 1
+        events_after_deletion = read_events(audit_root)
+        assert any(item["event_type"] == "output_file_deleted" for item in events_after_deletion)
+        assert any(item["event_type"] == "runner_state_history_reset" for item in events_after_deletion)
+
+
+def test_canonical_state_secondary_read_race_retries_without_reset() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-state-read-race-") as raw:
+        repo = Path(raw).resolve()
+        initialize_repo(repo)
+        output, audit_root = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+        output.mkdir(parents=True)
+        audit_root.mkdir(parents=True)
+        observer = audit_module.Audit(
+            repo, output, audit_root, audit_root / "STOP",
+            audit_root / "runner-control.jsonl", b"r" * 32, 30,
+        )
+        state = output / "AGENT-STATE.md"
+        state.write_text(state_text("in_progress"), encoding="utf-8")
+        observer.observe_files()
+        assert observer.packet_rows["D-001"]["status"] == "in_progress"
+
+        state.write_text(state_text("verified"), encoding="utf-8")
+        original_read_bytes = Path.read_bytes
+
+        def fail_state_read(path: Path) -> bytes:
+            if path == state:
+                raise FileNotFoundError(path)
+            return original_read_bytes(path)
+
+        with mock.patch.object(Path, "read_bytes", fail_state_read):
+            observer.observe_files()
+        assert observer.packet_rows["D-001"]["status"] == "in_progress"
+        assert observer.secondary_read_deferred == {
+            "AGENT-STATE.md": "path_unreadable_after_snapshot"
+        }
+
+        observer.observe_files()
+        assert observer.packet_rows["D-001"]["status"] == "verified"
+        assert observer.secondary_read_deferred == {}
+        event_types = [item["event_type"] for item in read_events(audit_root)]
+        assert "output_secondary_read_deferred" in event_types
+        assert "output_secondary_read_deferred_resolved" in event_types
+
+
+def test_production_reference_hash_race_is_invalid_not_fatal() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-reference-race-") as raw:
+        repo = Path(raw).resolve()
+        initialize_repo(repo)
+        output, audit_root = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+        output.mkdir(parents=True)
+        audit_root.mkdir(parents=True)
+        observer = audit_module.Audit(
+            repo, output, audit_root, audit_root / "STOP",
+            audit_root / "runner-control.jsonl", b"r" * 32, 30,
+        )
+        reference = output / "reference.txt"
+        reference.write_text("stable before race\n", encoding="utf-8")
+        expected = hashlib.sha256(reference.read_bytes()).hexdigest()
+        original_sha256 = audit_module.sha256
+
+        def fail_reference_hash(path: Path) -> str:
+            if path == reference:
+                raise FileNotFoundError(path)
+            return original_sha256(path)
+
+        with mock.patch.object(audit_module, "sha256", fail_reference_hash):
+            resolved, errors = observer.validate_production_references(
+                [{"path": "reference.txt", "sha256": expected}]
+            )
+        assert resolved == []
+        assert errors == ["reference_0_read_failed"]
+
+
+def test_append_self_test_scratch_is_ephemeral_not_production() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-self-test-race-") as raw:
+        repo = Path(raw).resolve()
+        initialize_repo(repo)
+        output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+        process, stop, _control = start_observer(repo, output, audit, poll_ms=100)
+        try:
+            for _index in range(3):
+                completed = subprocess.run(
+                    [sys.executable, str(APPEND_HELPER), "--self-test", "--run-root", str(output)],
+                    cwd=repo, capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", check=False,
+                )
+                assert completed.returncode == 0, completed.stderr
+            initialized = subprocess.run(
+                [
+                    sys.executable, str(APPEND_HELPER), "--run-root", str(output),
+                    "--stage", "DISCOVERY", "--event-type", "run_initialized",
+                    "--evidence-summary", "canonical runner cross-check",
+                ],
+                cwd=repo, capture_output=True, text=True, encoding="utf-8",
+                errors="replace", check=False,
+            )
+            assert initialized.returncode == 0, initialized.stderr
+            wait_for_event(
+                audit, "production_event_observed", path="EVENTS.jsonl", production_event_seq=1
+            )
+            summary = finalize_observer(process, audit, stop)
+        finally:
+            stop_after_failure(process, audit, stop)
+
+        assert not list(output.glob(".append-event-self-test-*"))
+        assert set(summary["production_cross_checks"]["files"]) == {"EVENTS.jsonl"}
+        assert summary["production_cross_checks"]["files"]["EVENTS.jsonl"]["valid"] is True
+        assert summary["observation_integrity"]["complete_at_finalize"] is True
+        event_types = [event["event_type"] for event in read_events(audit)]
+        assert "runner_stop_requested" in event_types
+        assert event_types[-1] == "runner_finalized"
+
+
+def test_malformed_canonical_production_stream_remains_invalid() -> None:
+    cases = (
+        ("invalid-json", "{not-json}\n", "production_event_parse_error"),
+        ("incomplete-tail", "{not-json", "production_stream_incomplete_record"),
+    )
+    for name, contents, expected_event in cases:
+        with tempfile.TemporaryDirectory(
+            prefix=f"discovery-audit-malformed-production-{name}-"
+        ) as raw:
+            repo = Path(raw).resolve()
+            initialize_repo(repo)
+            output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+            process, stop, _control = start_observer(repo, output, audit)
+            try:
+                (output / "EVENTS.jsonl").write_text(contents, encoding="utf-8")
+                wait_for_event(audit, expected_event, path="EVENTS.jsonl")
+                summary = finalize_observer(process, audit, stop)
+            finally:
+                stop_after_failure(process, audit, stop)
+
+            stream = summary["production_cross_checks"]["files"]["EVENTS.jsonl"]
+            assert stream["read_observation_complete"] is True
+            assert stream["parse_valid"] is False
+            assert stream["valid"] is False
 
 
 def test_positive_strict_order_and_outside_reporting() -> None:
@@ -573,6 +784,13 @@ def main() -> None:
     try:
         test_gate_roles_are_neutral()
         test_invalid_root_relationships_are_rejected()
+        test_snapshot_files_defers_a_path_deleted_during_hash()
+        test_deferred_path_preserves_prior_stable_sample()
+        test_root_enumeration_defer_preserves_history_then_real_deletion_resets()
+        test_canonical_state_secondary_read_race_retries_without_reset()
+        test_production_reference_hash_race_is_invalid_not_fatal()
+        test_append_self_test_scratch_is_ephemeral_not_production()
+        test_malformed_canonical_production_stream_remains_invalid()
         test_positive_strict_order_and_outside_reporting()
         test_first_seen_verified_and_empty_noncanonical_artifacts_reject()
         test_verified_packet_row_change_rejects()
