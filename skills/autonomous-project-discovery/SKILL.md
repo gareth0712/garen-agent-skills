@@ -40,7 +40,7 @@ Run the orchestrator in the top-level session. If this skill is invoked inside a
 
 - Use protocol `autonomous-artifacts-v2`; durable files, not conversation memory, carry state.
 - `AGENT-STATE.md` has one writer: the orchestrator.
-- `AGENT-STATE.md` is the sole authoritative control-plane index. The top-level orchestrator alone appends bounded audit evidence to canonical `EVENTS.jsonl`.
+- `AGENT-STATE.md` is the sole authoritative control-plane index. The top-level orchestrator alone appends bounded audit evidence to canonical `EVENTS.jsonl` through the verified `append_event` adapter; never patch, edit, truncate, or rewrite existing event lines.
 - Use only these Discovery depths: `skip`, `targeted`, `full`.
 - Use only these unknown classes: `known_known`, `known_unknown`, `unknown_known`, `candidate_unknown_unknown`.
 - Every retained unknown or research/prototype packet names a non-empty `decision_unlocked`, an owner, and an allowed disposition.
