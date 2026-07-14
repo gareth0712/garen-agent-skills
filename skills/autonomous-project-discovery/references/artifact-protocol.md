@@ -69,9 +69,9 @@ A framing contradiction routes to Discovery. An architecture, interface, data, s
 
 Equivalent non-canonical artifacts may be consumed only when their content satisfies the required fields and freshness checks. Record the equivalent source path and mapped revision.
 
-## Absolute worker dispatch anchors
+## Physical path containment and dispatch anchors
 
-Portable forward-slash paths remain canonical references inside state, packet, report, and gate artifacts. Before dispatch, resolve the filesystem targets and include these absolute anchors in the worker contract:
+Portable forward-slash paths remain canonical references inside state, packet, report, and gate artifacts. The top-level orchestrator is the containment trust boundary. Before dispatch, it records both lexical absolute and physical/canonical values for these anchors and includes them in the worker contract:
 
 - `repository_root`
 - `worktree_root`
@@ -82,7 +82,17 @@ Portable forward-slash paths remain canonical references inside state, packet, r
 - `report_path`
 - `evidence_paths`
 
-Never rely on a relative path when a worktree, nested worker, or patch/shell tool may use a different base. Before its first write, the worker normalizes every anchor, resolves every assigned write parent, and proves each parent is the absolute `run_root` or a descendant. A mismatch blocks the packet before any write. After work, the worker inventories its assigned root and checks the scoped repository/worktree surfaces for out-of-root changes; any contradiction is evidence for `blocked`, not a path to normalize after the fact.
+Containment uses physical filesystem identity and path components, never string prefixes or lexical normalization alone:
+
+1. Resolve the existing repository and worktree roots to physical/canonical paths and record their filesystem identity. Resolve an existing run root the same way; when it does not exist, resolve its nearest existing ancestor first.
+2. Walk every existing component from the allowed physical root to each input and assigned write target with no-follow metadata. Reject traversal through symbolic links, junctions, mount points, Windows reparse points, or an ancestor whose physical target escapes the allowed root. If the host cannot inspect a component or distinguish these cases, preflight is blocked.
+3. For each not-yet-existing target, record the canonical nearest existing ancestor and uncreated suffix. Prove the ancestor is contained, then create/re-resolve required directory suffix components one at a time; leave the assigned file leaf for the authorized writer and re-resolve it after creation. Reject a component that becomes a link, junction, mount, reparse point, or physical escape.
+4. Compare canonical path components using the filesystem's case rules. Inputs must remain under their explicitly allowed physical read root; output, report, and evidence targets must remain under the canonical run root.
+5. Record bounded preflight evidence with lexical/canonical roots, inspected components, filesystem identities where exposed, nearest-existing-ancestor results, and the decision. Inability to prove containment opens an `environment` or `capability` gate and no worker runs.
+
+Before its first write, the worker repeats normalization, no-follow component inspection, and physical containment using the recorded anchors. This is defense in depth only; worker self-checks never establish acceptance. After work, the top-level orchestrator re-resolves every written target and existing component, confirms physical containment against the recorded canonical run root, and records post-write evidence before artifact sampling or `verified`. A changed/escaping component blocks acceptance and opens `internal_recovery`; do not normalize it away or ask the worker to certify its own escape.
+
+Never rely on a relative path when a worktree, nested worker, or patch/shell tool may use a different base. After work, the worker also inventories its assigned root and checks scoped repository/worktree surfaces for out-of-root changes; any contradiction is evidence for `blocked`.
 
 ## Pre-dispatch blocking
 
@@ -92,18 +102,28 @@ Preflight required inputs, capabilities, authority, dependencies, and all absolu
 2. Set the packet to `blocked`; leave `completed_weight` unchanged.
 3. Set `effective_model: not_executed` and a non-empty block/fallback reason. `not_executed` is valid only when no worker ran.
 4. Set the report field to `none_not_dispatched`; do not create a worker report.
-5. Write bounded orchestrator-owned preflight evidence under the packet evidence root and open canonical `gates/G-###.md`.
+5. Write bounded orchestrator-owned preflight evidence under the packet evidence root and open canonical `gates/G-###.md`. Use `capability`, `environment`, or `internal_recovery` for operational blockers; do not mislabel them as human decisions.
 6. Append packet-status, `preflight_blocked`, and `gate_opened` events.
 
 A worker report is valid only after a worker actually ran. Orchestrator preflight evidence must not imitate the reusable worker-report schema.
+
+## Canonical gate classes
+
+Every pause or blocker uses one `gates/G-###.md`, but not every gate asks a human question. Human-decision types are `preference`, `product_decision`, `authority`, `uat`, and `security_legal`. `external_evidence` waits for a named external evidence owner. Operational types are:
+
+- `capability`: a required host/tool/isolated-worker capability is unavailable or unconfirmed; owner is the host operator or parent session, with an observable enablement/check route;
+- `environment`: required filesystem, dependency, path-inspection, or execution-environment evidence cannot be established; owner is the environment maintainer or orchestrator when repair is already authorized;
+- `internal_recovery`: a contradiction, failed bounded remediation, or post-write containment failure requires orchestrator/stage recovery rather than a product decision.
+
+Every gate records `owner_kind`, whether a human response is required, the exact recovery or question, evidence needed, and the resulting route. Do not use an operational type to hide a required product, authority, UAT, security, or legal decision; do not pause for a human answer when an authorized internal recovery remains available.
 
 ## Durable lifecycle audit
 
 `EVENTS.jsonl` is a bounded append-only audit artifact. Each line is one JSON object with a monotonically increasing `event_seq`, ISO-8601 `timestamp`, `event_type`, `stage`, optional `packet_id`, `from_status`, `to_status`, `actor`, referenced paths with available hashes/revisions, and a bounded `evidence_summary`. The top-level orchestrator is the only writer. Never include secrets, chain-of-thought, transcripts, or raw/unbounded logs.
 
-Append events for: `run_initialized`; `packet_created`; every `packet_status_transition`; `preflight_blocked`; `worker_dispatched`; `report_observed`; `evidence_observed`; `artifact_sampled`; `packet_verified`; `gate_opened`; `gate_resolved`; `handoff_written`; `stage_routed`; and `reconciliation_contradiction`.
+Append events for: `run_initialized`; `packet_created`; every `packet_status_transition`; `path_containment_preflight`; `preflight_blocked`; `worker_dispatched`; `report_observed`; `evidence_observed`; `path_containment_postwrite`; `artifact_sampled`; `packet_verified`; `gate_opened`; `gate_resolved`; `handoff_written`; `stage_routed`; and `reconciliation_contradiction`.
 
-A transition to `verified` is invalid unless earlier events for that packet record an existing report, existing evidence, and orchestrator artifact sampling. During recovery, reconcile state, files, and events. Downgrade unsupported `verified` status in `AGENT-STATE.md` and append `reconciliation_contradiction` with bounded references; never rewrite earlier event lines. This production log strengthens resumable handoff, but it does not replace runner-owned audit evidence required by evaluations.
+A transition to `verified` is invalid unless earlier events for that packet record passing post-write physical containment, an existing report, existing evidence, and orchestrator artifact sampling. During recovery, reconcile state, files, and events. Downgrade unsupported `verified` status in `AGENT-STATE.md` and append `reconciliation_contradiction` with bounded references; never rewrite earlier event lines. This production log strengthens resumable handoff, but it does not replace runner-owned audit evidence required by evaluations.
 
 ## Report-before-state acceptance ordering
 
@@ -113,11 +133,12 @@ Use this order for every packet or stage:
 2. The worker performs only authorized work and writes its reusable report.
 3. The worker writes or cites bounded evidence under the assigned evidence path.
 4. The worker returns at most ten lines pointing to the report and evidence.
-5. The orchestrator opens the report and representative artifacts, checks cited paths, and reruns a relevant verification when possible.
-6. The orchestrator appends report-observation, evidence-observation, and artifact-sampling events.
-7. Only after successful inspection may the orchestrator set status to `verified`, append the verified transition, and update derived artifacts.
+5. The orchestrator rechecks physical containment of every written target against the recorded canonical run root and records the result.
+6. The orchestrator opens the report and representative artifacts, checks cited paths, and reruns a relevant verification when possible.
+7. The orchestrator appends report-observation, evidence-observation, and artifact-sampling events.
+8. Only after successful containment and inspection may the orchestrator set status to `verified`, append the verified transition, and update derived artifacts.
 
-If the report is absent, required evidence is absent, an evidence path does not exist, or inspection contradicts the report, status cannot be `verified`. Use `blocked` or keep `in_progress` while bounded remediation remains.
+If containment cannot be re-established, the report is absent, required evidence is absent, an evidence path does not exist, or inspection contradicts the report, status cannot be `verified`. Use `blocked` or keep `in_progress` while bounded remediation remains.
 
 ## Reusable report content
 

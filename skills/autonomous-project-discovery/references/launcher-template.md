@@ -42,7 +42,7 @@ Artifact policy:
 - Fallback run root: `docs/agent-runs/<YYYYMMDD>-<goal-slug>[-N]/`
 - Protocol: `autonomous-artifacts-v2`
 - Canonical outputs: `AGENT-STATE.md`, bounded append-only `EVENTS.jsonl`, `SCOPE.md`, `DISCOVERY.md`, and `gates/G-###.md` when paused
-- Worker dispatch: keep portable artifact references, but resolve absolute repository/worktree/run/working/input/output/report/evidence paths and verify every write parent is under the absolute run root before dispatch
+- Worker dispatch: keep portable artifact references, but have the top-level orchestrator resolve lexical and physical/canonical repository/worktree/run/working/input/output/report/evidence paths; reject escaping symlink/junction/mount/Windows-reparse traversal or unprovable nearest-existing-ancestor containment before dispatch, then physically recheck every written target before acceptance
 - On resume or compaction, reconstruct from files and repository evidence before dispatch
 
 Retry and session policy:

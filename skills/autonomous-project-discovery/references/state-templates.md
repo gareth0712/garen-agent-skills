@@ -1,6 +1,6 @@
 # Discovery State Templates
 
-Replace every brace-delimited value with observed run data before accepting an artifact. Remove optional rows that truly do not apply and record the reason in `Assumptions and omissions`; never leave unresolved placeholders. Use forward-slash portable paths for canonical artifact references and resolved absolute paths for worker dispatch anchors.
+Replace every brace-delimited value with observed run data before accepting an artifact. Remove optional rows that truly do not apply and record the reason in `Assumptions and omissions`; never leave unresolved placeholders. Use forward-slash portable paths for canonical artifact references and record both lexical absolute and physical/canonical paths for worker dispatch anchors.
 
 ## Contents
 
@@ -29,6 +29,9 @@ run_id: {YYYYMMDD-goal-slug-N}
 repository_root: {absolute repository or project root}
 worktree_root: {absolute active worktree root, or same value as repository_root}
 run_root: {portable project-relative planning/run path}
+canonical_repository_root: {physical/canonical existing repository root}
+canonical_worktree_root: {physical/canonical existing worktree root}
+canonical_run_root: {physical/canonical run root, or canonical nearest existing ancestor plus declared uncreated suffix until created}
 events_path: EVENTS.jsonl
 updated_at: {ISO-8601 timestamp}
 
@@ -107,11 +110,12 @@ remediation_cycles_this_session: {0 | 1 | 2}
 
 `effective_model: not_executed` and report `none_not_dispatched` are paired and permitted only when preflight blocked dispatch before any worker ran. Such a block leaves `completed_weight` unchanged.
 
-## Human gates and UAT
+## Gates and UAT
 
 uat_state: {not_required | pending_preference_reaction | approved | rejected}
 pending_human_gate: {one material question and decision | none}
-gate_evidence_path: {gates/G-###.md | none}
+pending_operational_gate: {capability/environment/internal recovery blocker and owner | none}
+gate_evidence_path: {one active gates/G-###.md | none}
 
 ## Next action
 
@@ -137,9 +141,9 @@ Each line is one JSON object using this schema:
 {"event_seq": 1, "timestamp": "{ISO-8601 timestamp}", "event_type": "{event type}", "stage": "DISCOVERY", "packet_id": "{D-### | none}", "from_status": "{prior status | none}", "to_status": "{new status | none}", "actor": "top_level_orchestrator", "references": [{"path": "{portable artifact path}", "revision": "{revision | none}", "hash": "{digest | none}"}], "evidence_summary": "{bounded observation without secrets, chain-of-thought, transcripts, or raw logs}"}
 ```
 
-Use monotonically increasing `event_seq` and append events for `run_initialized`, `packet_created`, every `packet_status_transition`, `preflight_blocked`, `worker_dispatched`, `report_observed`, `evidence_observed`, `artifact_sampled`, `packet_verified`, `gate_opened`, `gate_resolved`, `handoff_written`, `stage_routed`, and `reconciliation_contradiction`.
+Use monotonically increasing `event_seq` and append events for `run_initialized`, `packet_created`, every `packet_status_transition`, `path_containment_preflight`, `preflight_blocked`, `worker_dispatched`, `report_observed`, `evidence_observed`, `path_containment_postwrite`, `artifact_sampled`, `packet_verified`, `gate_opened`, `gate_resolved`, `handoff_written`, `stage_routed`, and `reconciliation_contradiction`.
 
-A `verified` transition is invalid unless earlier events for the same packet record the existing report, existing evidence, and orchestrator sampling. On recovery, reconcile state, files, and events; downgrade unsupported `verified` state and append `reconciliation_contradiction`. `EVENTS.jsonl` improves production handoff but does not replace runner-owned lifecycle audit in evaluations.
+A `verified` transition is invalid unless earlier events for the same packet record passing post-write physical containment, the existing report, existing evidence, and orchestrator sampling. On recovery, reconcile state, files, and events; downgrade unsupported `verified` state and append `reconciliation_contradiction`. `EVENTS.jsonl` improves production handoff but does not replace runner-owned lifecycle audit in evaluations.
 
 ## `SCOPE.md`
 
@@ -311,7 +315,7 @@ Planning readiness: {READY | NOT_READY}
 - Current `discovery_readiness`: {ready | not_ready | stale}
 - Next stage: {DISCOVERY | PLANNING | STOP}
 - Residual owned uncertainty: {items, owners, dispositions}
-- Human/external gates: {material gate | none}
+- Canonical gates: {human, external, or operational gate with owner/recovery | none}
 - Continuation kind: {verified_command | manual_host_action}
 - Continuation verification: {harmless capability check and signal | command_not_verified_use_manual_host_action}
 - Exact continuation value: {existing `continuation_command` value}
@@ -349,25 +353,33 @@ evidence_root: evidence/D-{sequence}/
 - Required input/capability/authority/path checks: {bounded results}
 - Preflight evidence: evidence/D-{sequence}/preflight.md
 - Canonical gate: {gates/G-###.md | none}
+- Canonical gate type: {preference | product_decision | authority | uat | external_evidence | security_legal | capability | environment | internal_recovery | none}
 - Block/fallback reason: {non-empty reason when blocked | none}
 
 If preflight is `blocked`, do not dispatch: keep completed weight unchanged, use `effective_model: not_executed`, use report `none_not_dispatched`, write the bounded preflight evidence and canonical gate, and append transition events. `not_executed` is valid only when no worker ran.
 
-## Absolute dispatch path anchors
+## Physical/canonical dispatch path anchors
 
-repository_root: {resolved absolute repository root}
-worktree_root: {resolved absolute active worktree root}
-run_root: {resolved absolute run root}
-working_directory: {resolved absolute worker working directory}
+lexical_repository_root: {normalized absolute repository root}
+canonical_repository_root: {physical/canonical existing repository root}
+lexical_worktree_root: {normalized absolute active worktree root}
+canonical_worktree_root: {physical/canonical existing worktree root}
+lexical_run_root: {normalized absolute run root}
+canonical_run_root: {physical/canonical run root after creation}
+working_directory: {lexical absolute and physical/canonical worker working directory}
 input_paths:
-- {resolved absolute input path}
+- {lexical absolute path; physical/canonical path; allowed read root}
 output_paths:
-- {resolved absolute assigned output path}
-report_path: {resolved absolute worker report path}
+- {lexical absolute path; physical/canonical path or nearest existing ancestor plus uncreated suffix}
+report_path: {lexical absolute path; physical/canonical path or nearest existing ancestor plus uncreated suffix}
 evidence_paths:
-- {resolved absolute assigned evidence path}
+- {lexical absolute path; physical/canonical path or nearest existing ancestor plus uncreated suffix}
+containment_preflight_evidence: evidence/D-{sequence}/path-containment-preflight.md
+containment_postwrite_evidence: evidence/D-{sequence}/path-containment-postwrite.md
 
-Before its first write, the worker normalizes every anchor and proves each assigned write parent is the absolute `run_root` or its descendant. A mismatch blocks the packet without writing. After work, inventory the assigned root and check scoped repository/worktree surfaces for out-of-root changes.
+Before dispatch, the top-level orchestrator resolves physical/canonical roots, walks every existing component using no-follow metadata, rejects symlink/junction/mount/Windows-reparse traversal, and proves each target is contained by path components rather than string prefix. For an uncreated target, record and resolve the nearest existing ancestor plus the uncreated suffix, then create/re-resolve required directory suffix components one at a time; leave the assigned file leaf for its authorized writer. If inspection is unavailable or containment fails, block with `capability` or `environment` and do not dispatch.
+
+Before its first write, the worker repeats the same checks as defense in depth and blocks on mismatch. After work, inventory the assigned root and check scoped repository/worktree surfaces for out-of-root changes. Before acceptance, the top-level orchestrator physically re-resolves every written target/component, writes the post-write containment evidence, and blocks with `internal_recovery` or `environment` on any escape, mutation, or unprovable result.
 
 ## Scope and stop boundary
 
@@ -386,6 +398,7 @@ Before its first write, the worker normalizes every anchor and proves each assig
 - Completion criterion: {artifact/result that decides or narrows `decision_unlocked`}
 - Verification command/read/UI observation: {reproducible check}
 - Expected signal: {observable pass/fail evidence}
+- Post-write physical containment: {evidence/D-{sequence}/path-containment-postwrite.md and observed pass/fail signal}
 - Artifact sampling: {representative output the orchestrator must open}
 
 ## Fallback and retry
@@ -401,15 +414,23 @@ When a worker was dispatched, write the complete reusable report before returnin
 
 ## `gates/G-###.md`
 
-Use this one schema for `preference`, `product_decision`, `authority`, `uat`, `external_evidence`, and `security_legal`. `AGENT-STATE.md` points to one canonical `gates/G-###.md`; supporting prototype/evidence paths stay fields inside it.
+Use this one schema for human decisions, external evidence waits, and operational blockers. `AGENT-STATE.md` points to one canonical `gates/G-###.md`; supporting prototype/evidence paths stay fields inside it.
+
+- Human-decision types: `preference`, `product_decision`, `authority`, `uat`, `security_legal`.
+- External wait type: `external_evidence`.
+- Operational types: `capability`, `environment`, `internal_recovery`.
+
+`capability` covers unavailable/unconfirmed host, worker, or tool capability. `environment` covers filesystem, dependency, execution-environment, or physical-path-inspection failures. `internal_recovery` covers an orchestrator/stage-owned contradiction, exhausted remediation, or post-write containment failure. Operational gates do not set `pending_human_gate` unless their recorded recovery truly requires a human host operator. Never use them to hide a product, authority, UAT, security, or legal decision.
 
 ```markdown
 # Gate G-{sequence}
 
 gate_id: G-{sequence}
-gate_type: {preference | product_decision | authority | uat | external_evidence | security_legal}
+gate_type: {preference | product_decision | authority | uat | external_evidence | security_legal | capability | environment | internal_recovery}
 decision_unlocked: {one named decision}
 owner: {role/person/stage responsible for response}
+owner_kind: {human | external_system | orchestrator | owning_stage | host_environment | parent_session}
+requires_human_response: {yes | no}
 opened_at: {ISO-8601 timestamp}
 source_evidence_revisions:
 - {path plus revision/hash}
@@ -418,6 +439,7 @@ alternatives_or_required_input:
 impact: {what proceeds, changes, or remains blocked}
 safe_default: {bounded safe default | no_safe_default}
 focused_question_or_recovery_request: {one focused question or exact recovery request}
+recovery_check: {observable capability/environment/internal signal, or not_applicable_for_human_decision}
 pause_state: {paused | resumed}
 response_state: {pending | accepted | rejected | supplied | unavailable}
 prototype_paths:
@@ -429,7 +451,7 @@ evidence_paths:
 
 | allowed response | evidence required | resulting packet/state transition | route |
 |---|---|---|---|
-| {exact allowed response} | {response/prototype/evidence revision} | {from status => to status} | {continue Discovery packet | PLANNING | STOP} |
+| {exact allowed response or recovery outcome} | {response/prototype/evidence revision} | {from status => to status} | {retry/continue Discovery packet | PLANNING | STOP} |
 
 ## Resolution
 
@@ -456,7 +478,7 @@ completed_at: {ISO-8601 timestamp}
 
 - Primary outcome: {result}
 - Decision enabled or narrowed: {result and confidence}
-- Recommended route: {Discovery packet | human gate | Planning | stop}
+- Recommended route: {Discovery packet | canonical gate | Planning | stop}
 
 ## Decisions and assumptions
 
@@ -524,7 +546,7 @@ restart_mode: {manual | host-confirmed automatic action}
 
 - Active packet: {packet ID | none}
 - Unsupported status downgraded during reconciliation: {finding | none}
-- Blocker/human gate: {condition, owner, recovery | none}
+- Blocker/canonical gate: {condition, gate type, owner, human-response requirement, recovery | none}
 - Pre-existing dirty paths to preserve: {paths | none_observed}
 
 ## Next action

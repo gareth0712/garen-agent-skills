@@ -85,7 +85,9 @@ Use a diagram, mock output, wireframe, worked example, or disposable prototype w
 
 Inspect first, then ask at most one focused question at a time. Ask only when the answer materially changes product framing, grants irreversible authority, or resolves a preference that evidence and a cheap prototype cannot infer. Record the question, decision, offered alternatives, safe default if one exists, and pause state. Never replace evidence gathering with a broad questionnaire.
 
-Persist every pause at canonical `gates/G-###.md` using one of `preference`, `product_decision`, `authority`, `uat`, `external_evidence`, or `security_legal`. `AGENT-STATE.md` points to that one gate path. Keep prototype and supporting evidence as fields inside the gate rather than inventing a second gate location or shape.
+Persist every human or external pause at canonical `gates/G-###.md`. Human-decision types are `preference`, `product_decision`, `authority`, `uat`, and `security_legal`; `external_evidence` names the external evidence owner. `AGENT-STATE.md` points to that one gate path. Keep prototype and supporting evidence as fields inside the gate rather than inventing a second gate location or shape.
+
+Operational preflight/recovery blockers use the same canonical artifact with type `capability`, `environment`, or `internal_recovery`, an explicit non-human owner when applicable, and a falsifiable recovery check. They are not human preference gates: do not manufacture a focused product question or set `pending_human_gate` merely because a tool, path, dependency, or internal recovery failed. Conversely, never relabel a product, authority, UAT, security, or legal decision as operational to avoid the real human gate.
 
 ## Readiness rubric and routes
 

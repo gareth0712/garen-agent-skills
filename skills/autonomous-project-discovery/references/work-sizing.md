@@ -49,9 +49,9 @@ For a failed or contradictory packet:
 2. Write an evidence-backed diagnosis and identify whether the contract, environment, or approach failed.
 3. Preserve useful artifacts; change one bounded variable or repair the contract.
 4. Retry only when the new attempt has a falsifiable reason to succeed.
-5. Independently inspect the new output before acceptance.
+5. Independently recheck physical path containment and inspect the new output before acceptance.
 
-Allow at most two evidence-driven remediation cycles for the same packet. If it remains unverified after the second cycle, set the packet to `blocked`, record the repeated condition and recovery options, write a handoff when needed, and route to the owner or human gate. Do not retry through alternate syntax to bypass a denied operation.
+Allow at most two evidence-driven remediation cycles for the same packet. If it remains unverified after the second cycle, set the packet to `blocked`, record the repeated condition and recovery options, write a handoff when needed, and open `internal_recovery` for orchestrator/stage-owned repair or the appropriate human gate only when a real human decision is required. Do not retry through alternate syntax to bypass a denied operation.
 
 ## No-rushing rule
 
