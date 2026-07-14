@@ -456,6 +456,156 @@ def test_freeze_cleanup_failure_remains_frozen() -> None:
         assert_frozen_failure(run_root, 2)
 
 
+def injected_windows_error(winerror: int) -> PermissionError:
+    error = PermissionError(13, "injected Windows marker cleanup failure")
+    error.winerror = winerror
+    return error
+
+
+def test_transient_windows_freeze_cleanup_retries_without_reappending() -> None:
+    with tempfile.TemporaryDirectory(prefix="append-event-freeze-transient-") as raw:
+        run_root = Path(raw).resolve()
+        original_unlink = os.unlink
+        original_write = os.write
+        unlink_calls = 0
+        write_calls = 0
+
+        def transient_then_unlink(path: str | bytes | os.PathLike[str]) -> None:
+            nonlocal unlink_calls
+            unlink_calls += 1
+            if unlink_calls == 1:
+                raise injected_windows_error(32)
+            if unlink_calls == 2:
+                raise injected_windows_error(33)
+            original_unlink(path)
+
+        def count_writes(descriptor: int, data: bytes) -> int:
+            nonlocal write_calls
+            write_calls += 1
+            return original_write(descriptor, data)
+
+        with (
+            mock.patch.object(append_module.os, "unlink", transient_then_unlink),
+            mock.patch.object(append_module.os, "write", count_writes),
+        ):
+            try:
+                append_in_process(run_root)
+            except append_module.AppendEventError as error:
+                raise AssertionError(
+                    "transient Windows marker cleanup was not tolerated"
+                ) from error
+
+        _, records = read_objects(run_root / "EVENTS.jsonl")
+        assert unlink_calls == 3
+        assert write_calls == 2
+        assert [record["event_seq"] for record in records] == [1]
+        assert not (run_root / "EVENTS.FROZEN").exists()
+
+
+def test_transient_windows_freeze_cleanup_exhaustion_remains_frozen() -> None:
+    with tempfile.TemporaryDirectory(prefix="append-event-freeze-exhaustion-") as raw:
+        run_root = Path(raw).resolve()
+        unlink_calls = 0
+
+        def always_locked(path: str | bytes | os.PathLike[str]) -> None:
+            nonlocal unlink_calls
+            unlink_calls += 1
+            raise injected_windows_error(32)
+
+        with mock.patch.object(append_module.os, "unlink", always_locked):
+            try:
+                append_in_process(run_root)
+            except append_module.AppendEventError:
+                pass
+            else:
+                raise AssertionError("transient Windows cleanup exhaustion was accepted")
+
+        assert unlink_calls == 4
+        _, records = read_objects(run_root / "EVENTS.jsonl")
+        assert [record["event_seq"] for record in records] == [1]
+        assert (run_root / "EVENTS.FROZEN").read_bytes() == append_module.FREEZE_BYTES
+        assert_frozen_failure(run_root, 2)
+
+
+def test_nontransient_windows_freeze_cleanup_does_not_retry() -> None:
+    with tempfile.TemporaryDirectory(prefix="append-event-freeze-nontransient-") as raw:
+        run_root = Path(raw).resolve()
+        unlink_calls = 0
+
+        def access_denied(path: str | bytes | os.PathLike[str]) -> None:
+            nonlocal unlink_calls
+            unlink_calls += 1
+            raise injected_windows_error(5)
+
+        with mock.patch.object(append_module.os, "unlink", access_denied):
+            try:
+                append_in_process(run_root)
+            except append_module.AppendEventError:
+                pass
+            else:
+                raise AssertionError("nontransient Windows cleanup failure was accepted")
+
+        assert unlink_calls == 1
+        assert (run_root / "EVENTS.FROZEN").read_bytes() == append_module.FREEZE_BYTES
+        _, records = read_objects(run_root / "EVENTS.jsonl")
+        assert [record["event_seq"] for record in records] == [1]
+
+
+def test_freeze_cleanup_retry_rejects_marker_identity_change() -> None:
+    with tempfile.TemporaryDirectory(prefix="append-event-freeze-identity-") as raw:
+        run_root = Path(raw).resolve()
+        marker = run_root / "EVENTS.FROZEN"
+        displaced = run_root / "EVENTS.FROZEN.displaced"
+        unlink_calls = 0
+
+        def replace_marker_then_lock(path: str | bytes | os.PathLike[str]) -> None:
+            nonlocal unlink_calls
+            unlink_calls += 1
+            os.replace(path, displaced)
+            marker.write_bytes(append_module.FREEZE_BYTES)
+            raise injected_windows_error(32)
+
+        with mock.patch.object(append_module.os, "unlink", replace_marker_then_lock):
+            try:
+                append_in_process(run_root)
+            except append_module.AppendEventError:
+                pass
+            else:
+                raise AssertionError("changed marker identity was deleted")
+
+        assert unlink_calls == 1
+        assert marker.read_bytes() == append_module.FREEZE_BYTES
+        assert displaced.read_bytes() == append_module.FREEZE_BYTES
+        _, records = read_objects(run_root / "EVENTS.jsonl")
+        assert [record["event_seq"] for record in records] == [1]
+
+
+def test_freeze_cleanup_retry_restores_disappeared_marker() -> None:
+    with tempfile.TemporaryDirectory(prefix="append-event-freeze-disappeared-") as raw:
+        run_root = Path(raw).resolve()
+        original_unlink = os.unlink
+        unlink_calls = 0
+
+        def remove_marker_then_lock(path: str | bytes | os.PathLike[str]) -> None:
+            nonlocal unlink_calls
+            unlink_calls += 1
+            original_unlink(path)
+            raise injected_windows_error(33)
+
+        with mock.patch.object(append_module.os, "unlink", remove_marker_then_lock):
+            try:
+                append_in_process(run_root)
+            except append_module.AppendEventError:
+                pass
+            else:
+                raise AssertionError("disappeared marker was treated as clean success")
+
+        assert unlink_calls == 1
+        assert (run_root / "EVENTS.FROZEN").read_bytes() == append_module.FREEZE_BYTES
+        _, records = read_objects(run_root / "EVENTS.jsonl")
+        assert [record["event_seq"] for record in records] == [1]
+
+
 def test_existing_freeze_blocks_append_and_self_test_first() -> None:
     with tempfile.TemporaryDirectory(prefix="append-event-pre-frozen-") as raw:
         run_root = Path(raw).resolve()
@@ -512,6 +662,11 @@ def main() -> None:
     test_stream_fsync_failure_freezes_later_appends()
     test_stream_close_failure_freezes_later_appends()
     test_freeze_cleanup_failure_remains_frozen()
+    test_transient_windows_freeze_cleanup_retries_without_reappending()
+    test_transient_windows_freeze_cleanup_exhaustion_remains_frozen()
+    test_nontransient_windows_freeze_cleanup_does_not_retry()
+    test_freeze_cleanup_retry_rejects_marker_identity_change()
+    test_freeze_cleanup_retry_restores_disappeared_marker()
     test_existing_freeze_blocks_append_and_self_test_first()
     test_self_test_is_isolated_and_removes_scratch()
     assert cache_artifacts() == before_cache

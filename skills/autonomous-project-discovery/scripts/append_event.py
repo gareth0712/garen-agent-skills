@@ -12,6 +12,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PureWindowsPath
@@ -29,6 +30,9 @@ MAX_REFERENCE_BYTES = 512
 MAX_EVIDENCE_SUMMARY_BYTES = 4096
 MAX_EVENT_TYPE_BYTES = 128
 READ_CHUNK_BYTES = 1024 * 1024
+FREEZE_CLEANUP_ATTEMPTS = 4
+FREEZE_CLEANUP_RETRY_SECONDS = 0.025
+WINDOWS_TRANSIENT_CLEANUP_ERRORS = {32, 33}
 
 
 class AppendEventError(Exception):
@@ -186,13 +190,44 @@ def _restore_freeze_marker(root: Path) -> None:
     _arm_freeze_marker(root)
 
 
+def _validate_freeze_marker_for_cleanup(
+    marker_path: Path,
+    root: Path,
+    freeze: FreezeState,
+) -> None:
+    marker = _freeze_marker_stat(marker_path, root, freeze.identity)
+    marker_bytes = _read_regular_bytes(
+        marker_path,
+        marker,
+        "freeze marker invalid",
+        require_single_link=True,
+    )
+    if marker_bytes != FREEZE_BYTES:
+        raise AppendEventError("freeze marker invalid")
+
+
+def _is_transient_windows_cleanup_error(error: OSError) -> bool:
+    return getattr(error, "winerror", None) in WINDOWS_TRANSIENT_CLEANUP_ERRORS
+
+
 def _remove_freeze_marker(root: Path, freeze: FreezeState) -> None:
     marker_path = root / FREEZE_NAME
     try:
-        _freeze_marker_stat(marker_path, root, freeze.identity)
-        os.unlink(marker_path)
-        if os.path.lexists(marker_path):
-            raise AppendEventError("freeze cleanup failed")
+        for attempt in range(FREEZE_CLEANUP_ATTEMPTS):
+            _validate_freeze_marker_for_cleanup(marker_path, root, freeze)
+            try:
+                os.unlink(marker_path)
+            except OSError as error:
+                if (
+                    not _is_transient_windows_cleanup_error(error)
+                    or attempt + 1 == FREEZE_CLEANUP_ATTEMPTS
+                ):
+                    raise
+                time.sleep(FREEZE_CLEANUP_RETRY_SECONDS)
+                continue
+            if os.path.lexists(marker_path):
+                raise AppendEventError("freeze cleanup failed")
+            return
     except (AppendEventError, OSError) as error:
         try:
             _restore_freeze_marker(root)
