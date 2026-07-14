@@ -4,6 +4,8 @@
 
 Every Discovery packet has one primary outcome, explicit inputs, a named `decision_unlocked`, an observable completion criterion, verification, fallback, owner, disposition, and no unresolved dependency on a later unit.
 
+Also declare a durable progress boundary before dispatch: the assigned worker-progress marker, the next bounded milestone that must change it, and at least one enforceable exhaustion signal. Valid signals are a maximum count of evidence surfaces/checks recorded by the marker, a per-operation timeout the host actually enforces, or an elapsed-time deadline measured by a reliable host/monotonic clock. Verify the chosen mechanism before dispatch. If none is observable and enforceable, block preflight as a `capability` limitation; do not invent hidden time/context estimates.
+
 | size | weight | observable boundary |
 |---|---:|---|
 | `Small` | 1 | One behavior or decision, one subsystem or evidence surface, direct verification. |
@@ -52,6 +54,8 @@ For a failed or contradictory packet:
 5. Independently recheck physical path containment and inspect the new output before acceptance.
 
 Allow at most two evidence-driven remediation cycles for the same packet. If it remains unverified after the second cycle, set the packet to `blocked`, record the repeated condition and recovery options, write a handoff when needed, and open `internal_recovery` for orchestrator/stage-owned repair or the appropriate human gate only when a real human decision is required. Do not retry through alternate syntax to bypass a denied operation.
+
+Treat worker `running` status and chat assurances as no durable progress. While waiting through the host-supported mechanism, compare the assigned progress marker/report/evidence leaves. Repeated no-change observations may trigger one completion-or-blocker request that restates the declared boundary, but wait count alone never terminates a worker because host wait duration is not portable. End the attempt only when the predeclared exhaustion signal is observed: the durable work-unit limit is reached, an enforced operation timeout or reliable elapsed deadline expires, or the host reports a hard failure/usage limit. Preserve the absence or last marker as evidence and diagnose before any retry. Never introduce an after-the-fact deadline merely to force a PASS.
 
 ## No-rushing rule
 

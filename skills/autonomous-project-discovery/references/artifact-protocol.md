@@ -90,7 +90,7 @@ Containment uses physical filesystem identity and path components, never string 
 4. Compare canonical path components using the filesystem's case rules. Inputs must remain under their explicitly allowed physical read root; output, report, and evidence targets must remain under the canonical run root.
 5. Record bounded preflight evidence with lexical/canonical roots, inspected components, filesystem identities where exposed, nearest-existing-ancestor results, and the decision. Inability to prove containment opens an `environment` or `capability` gate and no worker runs.
 
-Before its first write, the worker repeats normalization, no-follow component inspection, and physical containment using the recorded anchors. This is defense in depth only; worker self-checks never establish acceptance. After work, the top-level orchestrator re-resolves every written target and existing component, confirms physical containment against the recorded canonical run root, and records post-write evidence before artifact sampling or `verified`. A changed/escaping component blocks acceptance and opens `internal_recovery`; do not normalize it away or ask the worker to certify its own escape.
+Before substantive analysis, the worker repeats normalization, no-follow component inspection, and physical containment using the recorded anchors, then writes its assigned `evidence/<packet>/worker-progress.md` marker with start time, assigned leaves, anchor digest or bounded anchor summary, and first next action. This is defense in depth and liveness evidence only; worker self-checks and progress markers never establish acceptance. Update the marker only at bounded milestone changes, not as a raw log. After work, the top-level orchestrator re-resolves every written target and existing component, confirms physical containment against the recorded canonical run root, and records post-write evidence before artifact sampling or `verified`. A changed/escaping component blocks acceptance and opens `internal_recovery`; do not normalize it away or ask the worker to certify its own escape.
 
 Never rely on a relative path when a worktree, nested worker, or patch/shell tool may use a different base. After work, the worker also inventories its assigned root and checks scoped repository/worktree surfaces for out-of-root changes; any contradiction is evidence for `blocked`.
 
@@ -119,7 +119,7 @@ Every gate records `owner_kind`, whether a human response is required, the exact
 
 ## Durable lifecycle audit
 
-`EVENTS.jsonl` is a bounded append-only audit artifact. Each line is one JSON object with a monotonically increasing `event_seq`, ISO-8601 `timestamp`, `event_type`, `stage`, optional `packet_id`, `from_status`, `to_status`, `actor`, referenced paths with available hashes/revisions, and a bounded `evidence_summary`. The top-level orchestrator is the only writer. Never include secrets, chain-of-thought, transcripts, or raw/unbounded logs.
+`EVENTS.jsonl` is a bounded append-only audit artifact. Each line is one JSON object with a monotonically increasing `event_seq`, a fresh timezone-aware ISO-8601 `timestamp` strictly later than the preceding event, `event_type`, `stage`, optional `packet_id`, `from_status`, `to_status`, `actor`, referenced paths with reproducible hashes/revisions, and a bounded `evidence_summary`. For every referenced local file that exists, compute and record its actual lowercase 64-hex SHA-256; an informal artifact revision does not substitute for the digest. If the file does not yet exist, omit that reference and cite the expected path only in `evidence_summary`. Read the clock for each append; when clock granularity would repeat or regress, serialize the append and use a later valid timestamp rather than copying the prior value. The top-level orchestrator is the only writer. Never include secrets, chain-of-thought, transcripts, or raw/unbounded logs.
 
 Append events for: `run_initialized`; `packet_created`; every `packet_status_transition`; `path_containment_preflight`; `preflight_blocked`; `worker_dispatched`; `report_observed`; `evidence_observed`; `path_containment_postwrite`; `artifact_sampled`; `packet_verified`; `gate_opened`; `gate_resolved`; `handoff_written`; `stage_routed`; and `reconciliation_contradiction`.
 
@@ -130,13 +130,14 @@ A transition to `verified` is invalid unless earlier events for that packet reco
 Use this order for every packet or stage:
 
 1. After preflight passes, the orchestrator writes the packet, appends creation/status events, and sets status to `in_progress`.
-2. The worker performs only authorized work and writes its reusable report.
-3. The worker writes or cites bounded evidence under the assigned evidence path.
-4. The worker returns at most ten lines pointing to the report and evidence.
-5. The orchestrator rechecks physical containment of every written target against the recorded canonical run root and records the result.
-6. The orchestrator opens the report and representative artifacts, checks cited paths, and reruns a relevant verification when possible.
-7. The orchestrator appends report-observation, evidence-observation, and artifact-sampling events.
-8. Only after successful containment and inspection may the orchestrator set status to `verified`, append the verified transition, and update derived artifacts.
+2. After its containment self-check, the worker writes the bounded worker-progress marker before substantive analysis.
+3. The worker performs only authorized work and writes its reusable report.
+4. The worker writes or cites bounded evidence under the assigned evidence path.
+5. The worker returns at most ten lines pointing to the report and evidence.
+6. The orchestrator rechecks physical containment of every written target against the recorded canonical run root and records the result.
+7. The orchestrator opens the report and representative artifacts, checks cited paths, and reruns a relevant verification when possible.
+8. The orchestrator appends report-observation, evidence-observation, and artifact-sampling events.
+9. Only after successful containment and inspection may the orchestrator set status to `verified`, append the verified transition, and update derived artifacts.
 
 If containment cannot be re-established, the report is absent, required evidence is absent, an evidence path does not exist, or inspection contradicts the report, status cannot be `verified`. Use `blocked` or keep `in_progress` while bounded remediation remains.
 

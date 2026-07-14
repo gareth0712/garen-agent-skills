@@ -138,10 +138,12 @@ Only the top-level orchestrator appends this bounded audit artifact. `AGENT-STAT
 Each line is one JSON object using this schema:
 
 ```json
-{"event_seq": 1, "timestamp": "{ISO-8601 timestamp}", "event_type": "{event type}", "stage": "DISCOVERY", "packet_id": "{D-### | none}", "from_status": "{prior status | none}", "to_status": "{new status | none}", "actor": "top_level_orchestrator", "references": [{"path": "{portable artifact path}", "revision": "{revision | none}", "hash": "{digest | none}"}], "evidence_summary": "{bounded observation without secrets, chain-of-thought, transcripts, or raw logs}"}
+{"event_seq": 1, "timestamp": "{fresh timezone-aware ISO-8601 timestamp strictly later than the prior event}", "event_type": "{event type}", "stage": "DISCOVERY", "packet_id": "{D-### | none}", "from_status": "{prior status | none}", "to_status": "{new status | none}", "actor": "top_level_orchestrator", "references": [{"path": "{existing portable artifact path}", "revision": "{reproducible artifact revision}", "hash": "{actual lowercase 64-hex SHA-256 of current file bytes}"}], "evidence_summary": "{bounded observation without secrets, chain-of-thought, transcripts, or raw logs}"}
 ```
 
 Use monotonically increasing `event_seq` and append events for `run_initialized`, `packet_created`, every `packet_status_transition`, `path_containment_preflight`, `preflight_blocked`, `worker_dispatched`, `report_observed`, `evidence_observed`, `path_containment_postwrite`, `artifact_sampled`, `packet_verified`, `gate_opened`, `gate_resolved`, `handoff_written`, `stage_routed`, and `reconciliation_contradiction`.
+
+Compute the SHA-256 at append time for every existing local reference. Never write `hash: none`, a placeholder digest, or an informal revision in the hash field. Omit a not-yet-existing file from `references` and name its expected path only in `evidence_summary`. Read a fresh clock value for every line and require strict timestamp increase; do not reuse one timestamp for a batch.
 
 A `verified` transition is invalid unless earlier events for the same packet record passing post-write physical containment, the existing report, existing evidence, and orchestrator sampling. On recovery, reconcile state, files, and events; downgrade unsupported `verified` state and append `reconciliation_contradiction`. `EVENTS.jsonl` improves production handoff but does not replace runner-owned lifecycle audit in evaluations.
 
@@ -376,6 +378,7 @@ evidence_paths:
 - {lexical absolute path; physical/canonical path or nearest existing ancestor plus uncreated suffix}
 containment_preflight_evidence: evidence/D-{sequence}/path-containment-preflight.md
 containment_postwrite_evidence: evidence/D-{sequence}/path-containment-postwrite.md
+worker_progress_evidence: evidence/{packet_id}/worker-progress.md
 
 Before dispatch, the top-level orchestrator resolves physical/canonical roots, walks every existing component using no-follow metadata, rejects symlink/junction/mount/Windows-reparse traversal, and proves each target is contained by path components rather than string prefix. For an uncreated target, record and resolve the nearest existing ancestor plus the uncreated suffix, then create/re-resolve required directory suffix components one at a time; leave the assigned file leaf for its authorized writer. If inspection is unavailable or containment fails, block with `capability` or `environment` and do not dispatch.
 
@@ -386,6 +389,7 @@ Before its first write, the worker repeats the same checks as defense in depth a
 - In scope: {bounded evidence/prototype surface}
 - Out of scope: production implementation and Planning-owned detailed design
 - Stop when: {observable signal or bounded negative result}
+- Durable progress boundary: {worker-progress marker, next milestone, and verified enforceable exhaustion signal; block capability preflight if none exists}
 
 ## Authority and side effects
 
@@ -409,7 +413,7 @@ Before its first write, the worker repeats the same checks as defense in depth a
 
 ## Worker report and return
 
-When a worker was dispatched, write the complete reusable report before returning. Return at most ten lines containing verdict, report path, evidence paths, changed paths, verification summary, and blocker/next action. Do not return chain-of-thought, secrets, full transcripts, or unbounded logs. A pre-dispatch block has no worker return or worker report.
+When a worker was dispatched, perform the containment self-check and write `evidence/{packet_id}/worker-progress.md` before substantive analysis. Keep it bounded to start time, assigned leaves, anchor digest/summary, current milestone, and next action; it is never acceptance evidence by itself. Write the complete reusable report before returning. Return at most ten lines containing verdict, report path, evidence paths, changed paths, verification summary, and blocker/next action. Do not return chain-of-thought, secrets, full transcripts, or unbounded logs. A pre-dispatch block has no worker return or worker report.
 ```
 
 ## `gates/G-###.md`
