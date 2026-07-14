@@ -15,7 +15,7 @@ Discovery produces canonical `DISCOVERY.md` and `AGENT-STATE.md`. It may create 
 
 Load the six binding references progressively. A deferred read becomes required when its pointer fires:
 
-1. During bootstrap, read [Artifact protocol](references/artifact-protocol.md) and [Harness adapters](references/harness-adapters.md) completely before writing run state or dispatching a worker.
+1. During bootstrap, read [Artifact protocol](references/artifact-protocol.md) and [Harness adapters](references/harness-adapters.md) completely before writing run state or dispatching a worker. Capability-check Python and run the bundled `scripts/append_event.py --self-test` contract before initializing `EVENTS.jsonl`; use an independently verified equivalent only when Python is unavailable.
 2. Before territory, depth, framing, unknown, gate, or readiness decisions, read [Discovery method](references/discovery-method.md) completely.
 3. Before packet decomposition, dependency ordering, dispatch, budget cutover, or retry decisions, read [Work sizing](references/work-sizing.md) completely.
 4. Before writing or updating an artifact, read that artifact's complete section in [State templates](references/state-templates.md); read additional sections only when their artifact is needed.
@@ -40,7 +40,7 @@ Run the orchestrator in the top-level session. If this skill is invoked inside a
 
 - Use protocol `autonomous-artifacts-v2`; durable files, not conversation memory, carry state.
 - `AGENT-STATE.md` has one writer: the orchestrator.
-- `AGENT-STATE.md` is the sole authoritative control-plane index. The top-level orchestrator alone appends bounded audit evidence to canonical `EVENTS.jsonl` through the verified `append_event` adapter; never patch, edit, truncate, or rewrite existing event lines.
+- `AGENT-STATE.md` is the sole authoritative control-plane index. The top-level orchestrator alone appends bounded audit evidence to canonical `EVENTS.jsonl` through bundled `scripts/append_event.py` after its self-test passes; never patch, edit, truncate, or rewrite existing event lines. `EVENTS.FROZEN` forbids all later appends; close the predecessor with only state/gate/handoff evidence, hash it, make it immutable, and recover in a distinct run root with the exact lineage schema. Never delete the marker or repair old event bytes in place.
 - Use only these Discovery depths: `skip`, `targeted`, `full`.
 - Use only these unknown classes: `known_known`, `known_unknown`, `unknown_known`, `candidate_unknown_unknown`.
 - Every retained unknown or research/prototype packet names a non-empty `decision_unlocked`, an owner, and an allowed disposition.
@@ -57,9 +57,9 @@ Run the orchestrator in the top-level session. If this skill is invoked inside a
 
 ### 1. Bootstrap or rehydrate
 
-Discover host capabilities, applicable `AGENTS.md`/`CLAUDE.md`, repository root, established planning location, Git/filesystem state, relevant references, existing artifacts, and prior run state. On resume or after compaction, distrust the conversation summary and reconstruct from the protocol artifacts and repository evidence.
+Discover host capabilities, applicable `AGENTS.md`/`CLAUDE.md`, repository root, established planning location, Git/filesystem state, relevant references, existing artifacts, and prior run state. On resume or after compaction, distrust the conversation summary and reconstruct from the protocol artifacts and repository evidence. Check for `EVENTS.FROZEN` before any append. If present, never append to that stream; apply the bounded predecessor-closure and successor-lineage procedure in `artifact-protocol.md` and `state-templates.md`.
 
-Completion criterion: capabilities and fallbacks are recorded, the run root is known, canonical `EVENTS.jsonl` has a `run_initialized` event, pre-existing dirty paths are inventoried when Git exists, and existing artifact freshness has been checked.
+Completion criterion: capabilities and fallbacks are recorded, the run root is known, the bundled append self-test (or independently verified equivalent) has passed with bounded evidence, canonical `EVENTS.jsonl` has a `run_initialized` event, no freeze marker exists, pre-existing dirty paths are inventoried when Git exists, and existing artifact freshness has been checked.
 
 ### 2. Inspect territory before interviewing
 
