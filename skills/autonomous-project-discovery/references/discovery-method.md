@@ -85,9 +85,11 @@ Use a diagram, mock output, wireframe, worked example, or disposable prototype w
 
 Inspect first, then ask at most one focused question at a time. Ask only when the answer materially changes product framing, grants irreversible authority, or resolves a preference that evidence and a cheap prototype cannot infer. Record the question, decision, offered alternatives, safe default if one exists, and pause state. Never replace evidence gathering with a broad questionnaire.
 
+Persist every pause at canonical `gates/G-###.md` using one of `preference`, `product_decision`, `authority`, `uat`, `external_evidence`, or `security_legal`. `AGENT-STATE.md` points to that one gate path. Keep prototype and supporting evidence as fields inside the gate rather than inventing a second gate location or shape.
+
 ## Readiness rubric and routes
 
-Set `discovery_readiness` to one of `ready`, `not_ready`, or `stale`:
+`discovery_readiness` is the current Discovery artifact's handoff/entry readiness for Planning. Set it to one of `ready`, `not_ready`, or `stale`:
 
 | value | observable test | route |
 |---|---|---|
@@ -95,7 +97,7 @@ Set `discovery_readiness` to one of `ready`, `not_ready`, or `stale`:
 | `not_ready` | A named framing decision, required evidence packet, or material human preference/authority gate fails the ready test. | Continue a bounded Discovery packet or pause for one focused human gate. |
 | `stale` | Current repository/reference evidence contradicts the recorded discovery revision. | Preserve contradiction/supersession evidence, set `next_stage: DISCOVERY`, and refresh only the affected framing. |
 
-Write exactly one `Planning readiness: READY` or `Planning readiness: NOT_READY` line in `DISCOVERY.md`. A stale artifact is `NOT_READY` until superseded by a current revision.
+Derive exactly one summary line in `DISCOVERY.md`: `ready` => `Planning readiness: READY`; `not_ready` or `stale` => `Planning readiness: NOT_READY`. The separate `planning_readiness` field describes an actual Planning artifact's readiness for its downstream stage and stays `not_assessed` until Planning exists.
 
 ## Stop condition
 

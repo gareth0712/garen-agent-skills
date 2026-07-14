@@ -40,11 +40,13 @@ Run the orchestrator in the top-level session. If this skill is invoked inside a
 
 - Use protocol `autonomous-artifacts-v2`; durable files, not conversation memory, carry state.
 - `AGENT-STATE.md` has one writer: the orchestrator.
+- `AGENT-STATE.md` is the sole authoritative control-plane index. The top-level orchestrator alone appends bounded audit evidence to canonical `EVENTS.jsonl`.
 - Use only these Discovery depths: `skip`, `targeted`, `full`.
 - Use only these unknown classes: `known_known`, `known_unknown`, `unknown_known`, `candidate_unknown_unknown`.
 - Every retained unknown or research/prototype packet names a non-empty `decision_unlocked`, an owner, and an allowed disposition.
 - A research action exists only when it unlocks a named decision. Drop open-ended exploration.
 - A worker writes its reusable report and evidence before returning. The orchestrator inspects them before changing the packet to `verified`.
+- Every dispatch carries resolved absolute repository, worktree, run-root, working-directory, input, output, report, and evidence anchors. Portable relative paths remain the canonical artifact references.
 - Worker returns contain at most ten lines. They point to durable artifacts; they do not reproduce the work.
 - Never request or persist chain-of-thought, secrets, full transcripts, or unbounded logs. Store conclusions, assumptions, decisions, redacted excerpts, commands, and reproducible evidence.
 - Preferred models and context telemetry are optional capabilities. Record requested/effective values and fallbacks; never claim unavailable capabilities ran.
@@ -56,7 +58,7 @@ Run the orchestrator in the top-level session. If this skill is invoked inside a
 
 Discover host capabilities, applicable `AGENTS.md`/`CLAUDE.md`, repository root, established planning location, Git/filesystem state, relevant references, existing artifacts, and prior run state. On resume or after compaction, distrust the conversation summary and reconstruct from the protocol artifacts and repository evidence.
 
-Completion criterion: capabilities and fallbacks are recorded, the run root is known, pre-existing dirty paths are inventoried when Git exists, and existing artifact freshness has been checked.
+Completion criterion: capabilities and fallbacks are recorded, the run root is known, canonical `EVENTS.jsonl` has a `run_initialized` event, pre-existing dirty paths are inventoried when Git exists, and existing artifact freshness has been checked.
 
 ### 2. Inspect territory before interviewing
 
@@ -96,9 +98,11 @@ Completion criterion: every pending packet is dispatchable without depending on 
 
 ### 7. Resolve and accept one packet
 
-Dispatch one fresh worker with the packet verbatim, applicable instruction paths, output/report paths, capability/model record, and the ten-line return contract. Wait using only the host-supported mechanism.
+Before dispatch, preflight every required input, capability, authority, dependency, and resolved path anchor. If any is missing, do not dispatch a worker: set the packet to `blocked` without changing `completed_weight`, set `effective_model: not_executed` with a non-empty block/fallback reason, set report to `none_not_dispatched`, write bounded orchestrator-owned preflight evidence plus `gates/G-###.md`, and append the status/preflight/gate events. `not_executed` is valid only when no worker ran.
 
-The worker writes reusable artifacts first. Independently inspect representative output and cited evidence; rerun a relevant check when available. Only then update `AGENT-STATE.md` to `verified`. Diagnose failures before a bounded retry; apply the circuit breaker in `work-sizing.md`.
+When preflight passes, dispatch one fresh worker with the packet verbatim, applicable instruction paths, capability/model record, ten-line return contract, portable artifact paths, and resolved absolute `repository_root`, `worktree_root`, `run_root`, `working_directory`, input, output, report, and evidence paths. The worker normalizes all anchors before its first write, proves every assigned write parent is under the absolute run root, and blocks on mismatch. After work, it inventories the assigned root and checks scoped out-of-root changes. Never rely on a relative path when worktrees, nested agents, or differing patch/shell bases are possible. Wait using only the host-supported mechanism.
+
+The worker writes reusable artifacts first. Independently inspect representative output and cited evidence; rerun a relevant check when available. Append bounded report-observation, evidence-observation, and artifact-sampling events before the verified transition. Only then update `AGENT-STATE.md` to `verified`. Diagnose failures before a bounded retry; apply the circuit breaker in `work-sizing.md`.
 
 Completion criterion: the packet is `verified`, `blocked`, or `superseded` with inspectable evidence and an explicit next action.
 
@@ -106,13 +110,15 @@ Completion criterion: the packet is `verified`, `blocked`, or `superseded` with 
 
 Write exactly one summary line in `DISCOVERY.md`: `Planning readiness: READY` or `Planning readiness: NOT_READY`.
 
-Set `discovery_readiness` in `AGENT-STATE.md` to exactly one of:
+`discovery_readiness` is the current Discovery artifact's handoff/entry readiness for Planning. Set it in `AGENT-STATE.md` to exactly one of:
 
 - `ready`: framing is current and satisfies the readiness rubric;
 - `not_ready`: a named blocking decision, packet, or human gate remains;
 - `stale`: current repository/reference evidence contradicts the artifact revision.
 
-Planning readiness means the problem/outcome are clear, scope is bounded, primary journeys and hard constraints are known, architecture-changing ambiguity is resolved or explicitly delegated, dangerous assumptions are visible, and every remaining unknown has an owner. It does not mean zero uncertainty.
+Derive the exact `DISCOVERY.md` line from that field: `ready` => `Planning readiness: READY`; `not_ready` or `stale` => `Planning readiness: NOT_READY`. The separate `planning_readiness` field means an actual Planning artifact's readiness for its downstream stage, so it remains `not_assessed` until Planning exists.
+
+Discovery readiness means the problem/outcome are clear, scope is bounded, primary journeys and hard constraints are known, architecture-changing ambiguity is resolved or explicitly delegated, dangerous assumptions are visible, and every remaining unknown has an owner. It does not mean zero uncertainty.
 
 Completion criterion: the readiness value, evidence, blocker list, and route agree across `DISCOVERY.md` and `AGENT-STATE.md`.
 
@@ -130,7 +136,7 @@ Use these testable routes:
 | `stale` or framing-changing contradiction | Set `next_stage: DISCOVERY`, preserve supersession evidence, and rediscover only the affected scope. |
 | Architecture/interface/sequencing detail only | Preserve Discovery framing and route the question to Planning. |
 
-Before a required session cutover, write `SESSION-HANDOFF.md`, update `continuation_command`, and end cleanly. Never compress work, reduce verification, or silently cross a user gate to fit the session.
+Before a required session cutover, write `SESSION-HANDOFF.md` and persist `continuation_kind`, `continuation_verification`, and the exact `continuation_command` value. Use `verified_command` only after a harmless capability check proves the executable and invocation form. Otherwise use `manual_host_action` with precise natural language naming this skill, the absolute run root, first-read files, gate input, and next action. Never invent CLI syntax. End cleanly without compressing work, reducing verification, or silently crossing a user gate.
 
 ## Bounded authority
 
@@ -149,5 +155,5 @@ Discovery is complete only when:
 - every retained packet/report/evidence artifact has been sampled by the orchestrator;
 - readiness and the backward/forward route are explicit and testable;
 - no production implementation or Planning-owned detail was silently created;
-- the exact continuation command and whether restart is manual are honest;
+- the continuation kind, verification evidence, exact value, and whether restart is manual are honest;
 - representative artifacts, not exit codes or worker self-reports alone, support the verdict.

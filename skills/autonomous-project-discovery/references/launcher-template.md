@@ -41,7 +41,8 @@ Artifact policy:
 - Existing planning location: auto-detect
 - Fallback run root: `docs/agent-runs/<YYYYMMDD>-<goal-slug>[-N]/`
 - Protocol: `autonomous-artifacts-v2`
-- Canonical outputs: `AGENT-STATE.md`, `SCOPE.md`, and `DISCOVERY.md`
+- Canonical outputs: `AGENT-STATE.md`, bounded append-only `EVENTS.jsonl`, `SCOPE.md`, `DISCOVERY.md`, and `gates/G-###.md` when paused
+- Worker dispatch: keep portable artifact references, but resolve absolute repository/worktree/run/working/input/output/report/evidence paths and verify every write parent is under the absolute run root before dispatch
 - On resume or compaction, reconstruct from files and repository evidence before dispatch
 
 Retry and session policy:
@@ -49,7 +50,7 @@ Retry and session policy:
 - Normal `session_budget`: 6 weight units
 - High-risk or UI/preference session budget: 4 weight units
 - Split every Large unit; do not reduce verification to fit a session
-- When cutover is required, write `SESSION-HANDOFF.md` and an exact `continuation_command`, then stop cleanly
+- When cutover is required, write `SESSION-HANDOFF.md`, `continuation_kind`, `continuation_verification`, and the exact `continuation_command` value; use a command only after a harmless capability check, otherwise write a precise manual host action
 
 Requested follow-through:
 - After Discovery: {stop | route to Planning when ready}

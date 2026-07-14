@@ -29,7 +29,7 @@ A packet is dispatchable only when every dependency is `verified` and its assign
 
 Set `session_budget: 6` for a normal session. Set `session_budget: 4` when `risk_mode` is `high_risk` or `ui`, including security-sensitive behavior, data changes, external integrations, destructive/irreversible risk, or preference/UI prototype gates.
 
-Before dispatch, calculate `completed_weight + next_packet_weight`. If the result exceeds `session_budget`, do not dispatch. Write `SESSION-HANDOFF.md`, update the exact `continuation_command`, set manual restart when the host cannot create a top-level session, and end cleanly.
+Before dispatch, calculate `completed_weight + next_packet_weight`. If the result exceeds `session_budget`, do not dispatch. Write `SESSION-HANDOFF.md`; persist `continuation_kind`, `continuation_verification`, and the exact `continuation_command` value; set manual restart when the host cannot create a top-level session; and end cleanly. A command requires a harmless successful capability check; otherwise use the protocol's precise `manual_host_action`.
 
 The budget is a ceiling, not a target. Stop earlier after the current unit when:
 

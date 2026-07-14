@@ -11,18 +11,20 @@
         "DISCOVERY.md separates facts, evidence-backed inferences, assumptions, proposals, and rejected framings, and contains exactly one Planning readiness: READY or Planning readiness: NOT_READY line.",
         "DISCOVERY.md owns users, outcomes, scope, non-goals, hard constraints, primary journeys, and acceptance intent without selecting detailed components, API/data contracts, implementation packages, or production stages.",
         "Every retained unknown uses exactly one of known_known, known_unknown, unknown_known, candidate_unknown_unknown and has non-empty decision_unlocked, owner, and an allowed disposition.",
-        "No production code, deployment, public action, secret change, or unapproved commit is created."
+        "Runner-owned audit records initial/final tracked Git SHA and status plus observed filesystem scope. It shows executor-created files are only Discovery artifacts under the assigned output root and include no production implementation files; every external-effect channel the runner cannot observe is explicitly labeled `unaudited`, and no unobserved channel is claimed clean."
       ]
     },
     {
       "id": 2,
-      "prompt": "In an existing SaaS repository, add a new billing and entitlements subsystem spanning checkout, webhook handling, plan enforcement, admin controls, and telemetry. The repository has some current product documentation but no discovery artifact for billing. Inspect the actual repository before asking questions, select the correct Discovery depth, identify project-specific blind spots, and route honestly when framing is insufficient.",
-      "expected_output": "A repository-evidence-driven targeted or full Discovery decision with explicit depth factors, bounded packets, owned unknowns, freshness/lineage state, and backward/forward routing without premature system design.",
-      "files": [],
+      "prompt": "In the supplied copied SaaS fixture, explore a new billing and entitlements subsystem spanning checkout, webhook handling, plan enforcement, admin controls, and telemetry. Inspect `SOURCE.md` first, then inspect only the copied paths named by the fixture; do not infer that missing upstream repository areas were inspected. The copied repository has product documentation but no discovery artifact for billing. Select the correct Discovery depth, identify source-tied project-specific blind spots, and route honestly when framing is insufficient.",
+      "expected_output": "A copied-repository-evidence-driven targeted or full Discovery decision with explicit depth factors, bounded packets, owned unknowns, fixture revision/path evidence, and backward/forward routing without premature system design.",
+      "files": [
+        "evals/fixtures/nextjs-saas-starter-6e33e58/"
+      ],
       "expectations": [
         "The depth decision is exactly `targeted` or `full`; it explicitly rejects `skip`. DISCOVERY.md records evidence rows named greenfield_status, ambiguity, blast_radius, irreversibility, and artifact_freshness.",
-        "Repository and instruction paths are inspected before any focused user question; unavailable evidence is labeled rather than invented.",
-        "Candidate blind spots are project-specific and tied to named billing decisions; no claim says unknown unknowns are exhaustive.",
+        "`SOURCE.md` is inspected first; repository findings cite copied fixture paths and the upstream revision `6e33e58b1e553a41fe22e6b941a7229a002de361`, while evidence outside the copied slice is labeled unavailable rather than invented.",
+        "At least two candidate_unknown_unknown blind spots are tied to named billing decisions and distinct copied source paths, such as subscription state without an entitlement model, checkout/webhook consistency or idempotency, or activity telemetry missing billing/admin events. No claim says the set is exhaustive, and no particular proposed architecture is required.",
         "Every D-### packet names decision_unlocked, owner, disposition, Small/1 or Medium/2 sizing, dependencies, observable verification, fallback, and a bounded stop condition; Large is split before dispatch.",
         "A current artifact may route to Planning only when ready; a framing contradiction sets discovery_readiness: stale and next_stage: DISCOVERY, while architecture-only questions route to Planning."
       ]
@@ -36,9 +38,9 @@
         "The preference item is classified unknown_known with non-empty decision_unlocked, owner, and disposition, and each retained example/prototype packet names that same decision and an observable stop condition.",
         "The orchestrator records requested_model, effective_model: host_default, and a non-empty fallback_reason per worker without claiming the preferred model ran.",
         "AGENT-STATE.md records context_telemetry: unavailable and enforces session_budget: 4 for the UI/preference gate using Small/1 or Medium/2 packets.",
-        "When the next packet would exceed the budget, no worker is dispatched and SESSION-HANDOFF.md plus an exact continuation_command are written.",
+        "When the next packet would exceed the budget, no worker is dispatched and SESSION-HANDOFF.md records continuation_kind, continuation_verification, and the exact continuation_command value; unverified CLI syntax is replaced by a precise manual_host_action.",
         "The workflow presents meaningfully different alternatives, asks at most one focused preference question, persists the pause, and states that restart is manual rather than literally unattended.",
-        "A packet is never verified until its report and cited evidence exist and the orchestrator has inspected representative artifacts."
+        "Runner-owned lifecycle audit contains ordered events for worker report write, evidence write, orchestrator sampling, and the later verified transition, with monotonic sequence/timestamps and referenced path hashes or revisions. Production EVENTS.jsonl cross-checks the lifecycle but is not accepted as the sole independent evidence."
       ]
     }
   ]

@@ -18,7 +18,7 @@ Claude Code and Codex are adapters to the same artifact workflow, not separate w
 | `checkpoint_state` | The top-level orchestrator updates `AGENT-STATE.md` after inspection. | The top-level orchestrator updates `AGENT-STATE.md` after inspection. | Preserve the same single-writer and report-before-state ordering with the host's safe file-edit mechanism. |
 | `request_human_gate` | Ask one focused question and persist the paused state before yielding. | Ask one focused question and persist the paused state before yielding. | Surface one decision with evidence, alternatives, impact, and safe default if one exists; never claim an answer. |
 | `route_stage` | Invoke or recommend the owning skill only after state/artifact readiness is current. | Invoke or recommend the owning skill only after state/artifact readiness is current. | Write the owning stage and reason into state; do not absorb another stage's responsibility. |
-| `finish_or_handoff` | Continue in a new top-level session only if the host explicitly supports it; otherwise write a continuation command. | Continue in a new top-level task only if explicitly supported; otherwise write a continuation command. | Set `restart_mode: manual`, write the exact continuation action, and end cleanly. |
+| `finish_or_handoff` | Continue in a new top-level session only if the host explicitly supports it; otherwise write a manual host action. | Continue in a new top-level task only if explicitly supported; otherwise write a manual host action. | Persist the verified-command or manual-host-action contract, set `restart_mode: manual` when needed, and end cleanly. |
 
 ## Capability record
 
@@ -32,7 +32,7 @@ Record each capability as `available`, `unavailable`, or `unknown`, plus the obs
 | Project instructions | `CLAUDE.md` and `AGENTS.md` may both apply. | `AGENTS.md` and `CLAUDE.md` may both apply. | Search the project hierarchy and read every applicable instruction file found. |
 | UI observation | Browser, screenshot, or computer-use may be exposed. | Browser, screenshot, or computer-use may be exposed. | Mark required visual verification or preference/UAT as a human gate. |
 | Git | Repository commands may be available. | Repository commands may be available. | Record filesystem revision evidence and pre-existing paths; never invent a Git SHA. |
-| New top-level session | May exist only through an explicitly exposed host action. | May exist only through an explicitly exposed host action. | Exact `continuation_command` plus manual restart. |
+| New top-level session | May exist only through an explicitly exposed host action. | May exist only through an explicitly exposed host action. | Use `verified_command` only after a harmless capability check; otherwise persist a precise `manual_host_action`. |
 
 ## Model policy
 
@@ -40,4 +40,12 @@ Model names are preferences, not assumptions. Discovery may request a highest-re
 
 ## Dispatch minimum
 
-Every fresh worker receives the goal, one packet outcome, scope and stop boundary, required instruction paths, explicit inputs, assigned artifact/report/evidence paths, allowed side effects, requested model preference, verification and fallback, and the at-most-ten-line return contract. The worker does not receive hidden conversation context as a dependency.
+Before calling the worker adapter, preflight required inputs, capability, authority, dependencies, and path anchors. If a requirement is missing, do not dispatch: keep completed weight unchanged, set the packet `blocked`, use `effective_model: not_executed` with a non-empty block/fallback reason, use report `none_not_dispatched`, write bounded orchestrator-owned preflight evidence plus canonical `gates/G-###.md`, and append the transition events. `not_executed` is permitted only when no worker ran.
+
+Every dispatched worker receives the goal, one packet outcome, scope and stop boundary, required instruction paths, portable artifact paths, allowed side effects, requested model preference, verification and fallback, and the at-most-ten-line return contract. It also receives resolved absolute `repository_root`, `worktree_root`, `run_root`, `working_directory`, `input_paths`, `output_paths`, `report_path`, and `evidence_paths`. The worker does not receive hidden conversation context as a dependency.
+
+Before its first write, the worker normalizes those paths and proves each assigned write parent is the absolute run root or its descendant. It blocks on mismatch. After work, it inventories the assigned root and checks scoped repository/worktree surfaces for out-of-root changes. Relative artifact paths never substitute for absolute filesystem targeting when worktrees, nested agents, or differing patch/shell bases are possible.
+
+## Continuation adapter
+
+Persist `continuation_kind: verified_command | manual_host_action`, `continuation_verification`, and the exact value in `continuation_command`. A `verified_command` requires a harmless check that proves the executable and intended invocation form work. Without that evidence, write a natural-language `manual_host_action` naming `autonomous-project-discovery`, the absolute run root, files to read first, required gate input, and next action. Never synthesize unsupported CLI syntax.

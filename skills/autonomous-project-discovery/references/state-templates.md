@@ -1,19 +1,23 @@
 # Discovery State Templates
 
-Replace every brace-delimited value with observed run data before accepting an artifact. Remove optional rows that truly do not apply and record the reason in `Assumptions and omissions`; never leave unresolved placeholders. Use forward-slash artifact paths.
+Replace every brace-delimited value with observed run data before accepting an artifact. Remove optional rows that truly do not apply and record the reason in `Assumptions and omissions`; never leave unresolved placeholders. Use forward-slash portable paths for canonical artifact references and resolved absolute paths for worker dispatch anchors.
 
 ## Contents
 
 - [`AGENT-STATE.md`](#agent-statemd)
+- [`EVENTS.jsonl`](#eventsjsonl)
 - [`SCOPE.md`](#scopemd)
 - [`DISCOVERY.md`](#discoverymd)
 - [`packets/D-###.md`](#packetsd-md)
+- [`gates/G-###.md`](#gatesg-md)
 - [`reports/D-###-report.md`](#reportsd--reportmd)
 - [`SESSION-HANDOFF.md`](#session-handoffmd)
 
 ## `AGENT-STATE.md`
 
 Only the top-level orchestrator writes this file.
+
+`discovery_readiness` is this Discovery artifact's handoff/entry readiness for Planning. It alone derives the `DISCOVERY.md` line: `ready` => `Planning readiness: READY`; `not_ready` or `stale` => `Planning readiness: NOT_READY`. `planning_readiness` instead describes an actual Planning artifact's downstream readiness and remains `not_assessed` until Planning exists.
 
 ```markdown
 # Agent State
@@ -23,7 +27,9 @@ workflow_type: discovery
 active_pipeline_stage: DISCOVERY
 run_id: {YYYYMMDD-goal-slug-N}
 repository_root: {absolute repository or project root}
-run_root: {project-relative planning/run path}
+worktree_root: {absolute active worktree root, or same value as repository_root}
+run_root: {portable project-relative planning/run path}
+events_path: EVENTS.jsonl
 updated_at: {ISO-8601 timestamp}
 
 ## Harness and capabilities
@@ -97,18 +103,22 @@ remediation_cycles_this_session: {0 | 1 | 2}
 
 | packet | decision_unlocked | size | weight | dependencies | status | report | evidence | requested_model | effective_model | fallback_reason | retry_count |
 |---|---|---|---:|---|---|---|---|---|---|---|---:|
-| D-001 | {named decision} | {Small | Medium} | {1 | 2} | {verified packet IDs | none} | {pending | in_progress | verified | blocked | superseded} | reports/D-001-report.md | evidence/{bounded evidence path} | {requested preference} | {confirmed model ID | host_default} | {none when confirmed | non-empty observed reason} | {0 | 1 | 2} |
+| D-001 | {named decision} | {Small | Medium} | {1 | 2} | {verified packet IDs | none} | {pending | in_progress | verified | blocked | superseded} | {reports/D-001-report.md | none_not_dispatched} | evidence/{bounded evidence or preflight path} | {requested preference} | {confirmed model ID | host_default | not_executed} | {none when confirmed | non-empty observed fallback/block reason} | {0 | 1 | 2} |
+
+`effective_model: not_executed` and report `none_not_dispatched` are paired and permitted only when preflight blocked dispatch before any worker ran. Such a block leaves `completed_weight` unchanged.
 
 ## Human gates and UAT
 
 uat_state: {not_required | pending_preference_reaction | approved | rejected}
 pending_human_gate: {one material question and decision | none}
-gate_evidence_path: {artifact path | none}
+gate_evidence_path: {gates/G-###.md | none}
 
 ## Next action
 
 next_action: {one evidence-based action}
-continuation_command: {exact safely quoted host command/action naming this skill, run root, and next action}
+continuation_kind: {verified_command | manual_host_action}
+continuation_verification: {harmless capability check plus observed signal | command_not_verified_use_manual_host_action}
+continuation_command: {exact verified command | precise natural-language host action naming autonomous-project-discovery, absolute run root, first-read files, gate input, and next action}
 blockers:
 - {named blocker with owner and recovery route, or none}
 
@@ -116,6 +126,20 @@ blockers:
 
 - {explicit assumption, owner, validation path, and effect if false, or none}
 ```
+
+## `EVENTS.jsonl`
+
+Only the top-level orchestrator appends this bounded audit artifact. `AGENT-STATE.md` remains the sole authoritative control-plane index. Never edit or reorder existing lines; recover by appending a contradiction event.
+
+Each line is one JSON object using this schema:
+
+```json
+{"event_seq": 1, "timestamp": "{ISO-8601 timestamp}", "event_type": "{event type}", "stage": "DISCOVERY", "packet_id": "{D-### | none}", "from_status": "{prior status | none}", "to_status": "{new status | none}", "actor": "top_level_orchestrator", "references": [{"path": "{portable artifact path}", "revision": "{revision | none}", "hash": "{digest | none}"}], "evidence_summary": "{bounded observation without secrets, chain-of-thought, transcripts, or raw logs}"}
+```
+
+Use monotonically increasing `event_seq` and append events for `run_initialized`, `packet_created`, every `packet_status_transition`, `preflight_blocked`, `worker_dispatched`, `report_observed`, `evidence_observed`, `artifact_sampled`, `packet_verified`, `gate_opened`, `gate_resolved`, `handoff_written`, `stage_routed`, and `reconciliation_contradiction`.
+
+A `verified` transition is invalid unless earlier events for the same packet record the existing report, existing evidence, and orchestrator sampling. On recovery, reconcile state, files, and events; downgrade unsupported `verified` state and append `reconciliation_contradiction`. `EVENTS.jsonl` improves production handoff but does not replace runner-owned lifecycle audit in evaluations.
 
 ## `SCOPE.md`
 
@@ -288,7 +312,9 @@ Planning readiness: {READY | NOT_READY}
 - Next stage: {DISCOVERY | PLANNING | STOP}
 - Residual owned uncertainty: {items, owners, dispositions}
 - Human/external gates: {material gate | none}
-- Exact continuation command: {safely quoted command/action}
+- Continuation kind: {verified_command | manual_host_action}
+- Continuation verification: {harmless capability check and signal | command_not_verified_use_manual_host_action}
+- Exact continuation value: {existing `continuation_command` value}
 ```
 
 ## `packets/D-###.md`
@@ -317,6 +343,32 @@ evidence_root: evidence/D-{sequence}/
 - {applicable instruction path}
 - Dependencies: {verified D packet IDs | none}
 
+## Pre-dispatch record
+
+- Preflight status: {passed | blocked}
+- Required input/capability/authority/path checks: {bounded results}
+- Preflight evidence: evidence/D-{sequence}/preflight.md
+- Canonical gate: {gates/G-###.md | none}
+- Block/fallback reason: {non-empty reason when blocked | none}
+
+If preflight is `blocked`, do not dispatch: keep completed weight unchanged, use `effective_model: not_executed`, use report `none_not_dispatched`, write the bounded preflight evidence and canonical gate, and append transition events. `not_executed` is valid only when no worker ran.
+
+## Absolute dispatch path anchors
+
+repository_root: {resolved absolute repository root}
+worktree_root: {resolved absolute active worktree root}
+run_root: {resolved absolute run root}
+working_directory: {resolved absolute worker working directory}
+input_paths:
+- {resolved absolute input path}
+output_paths:
+- {resolved absolute assigned output path}
+report_path: {resolved absolute worker report path}
+evidence_paths:
+- {resolved absolute assigned evidence path}
+
+Before its first write, the worker normalizes every anchor and proves each assigned write parent is the absolute `run_root` or its descendant. A mismatch blocks the packet without writing. After work, inventory the assigned root and check scoped repository/worktree surfaces for out-of-root changes.
+
 ## Scope and stop boundary
 
 - In scope: {bounded evidence/prototype surface}
@@ -344,10 +396,52 @@ evidence_root: evidence/D-{sequence}/
 
 ## Worker report and return
 
-Write the complete reusable report before returning. Return at most ten lines containing verdict, report path, evidence paths, changed paths, verification summary, and blocker/next action. Do not return chain-of-thought, secrets, full transcripts, or unbounded logs.
+When a worker was dispatched, write the complete reusable report before returning. Return at most ten lines containing verdict, report path, evidence paths, changed paths, verification summary, and blocker/next action. Do not return chain-of-thought, secrets, full transcripts, or unbounded logs. A pre-dispatch block has no worker return or worker report.
+```
+
+## `gates/G-###.md`
+
+Use this one schema for `preference`, `product_decision`, `authority`, `uat`, `external_evidence`, and `security_legal`. `AGENT-STATE.md` points to one canonical `gates/G-###.md`; supporting prototype/evidence paths stay fields inside it.
+
+```markdown
+# Gate G-{sequence}
+
+gate_id: G-{sequence}
+gate_type: {preference | product_decision | authority | uat | external_evidence | security_legal}
+decision_unlocked: {one named decision}
+owner: {role/person/stage responsible for response}
+opened_at: {ISO-8601 timestamp}
+source_evidence_revisions:
+- {path plus revision/hash}
+alternatives_or_required_input:
+- {bounded alternative or exact missing input}
+impact: {what proceeds, changes, or remains blocked}
+safe_default: {bounded safe default | no_safe_default}
+focused_question_or_recovery_request: {one focused question or exact recovery request}
+pause_state: {paused | resumed}
+response_state: {pending | accepted | rejected | supplied | unavailable}
+prototype_paths:
+- {portable isolated prototype path | none}
+evidence_paths:
+- {portable supporting evidence path}
+
+## Allowed responses and routes
+
+| allowed response | evidence required | resulting packet/state transition | route |
+|---|---|---|---|
+| {exact allowed response} | {response/prototype/evidence revision} | {from status => to status} | {continue Discovery packet | PLANNING | STOP} |
+
+## Resolution
+
+- Resolved at: {ISO-8601 timestamp | pending}
+- Recorded response: {bounded response | pending}
+- Resolution evidence/revision: {path/revision | pending}
+- Resulting route: {DISCOVERY | PLANNING | STOP | pending}
 ```
 
 ## `reports/D-###-report.md`
+
+Create this artifact only after a worker actually ran. A pre-dispatch block uses `none_not_dispatched` and orchestrator-owned preflight evidence instead.
 
 ```markdown
 # Discovery Packet D-{sequence} Report
@@ -438,7 +532,9 @@ restart_mode: {manual | host-confirmed automatic action}
 - Owning stage: {DISCOVERY | PLANNING | STOP}
 - Exact next action: {one evidence-based action}
 - Required files to read first: AGENT-STATE.md, SCOPE.md, DISCOVERY.md, {active packet/report paths}
-- Exact continuation command: {safely quoted command/action naming skill, run root, and next action}
+- Continuation kind: {verified_command | manual_host_action}
+- Continuation verification: {harmless capability check plus observed signal | command_not_verified_use_manual_host_action}
+- Exact continuation command/action: {existing `continuation_command` value; a verified command, or precise natural language naming autonomous-project-discovery, absolute run root, first-read files, gate input, and next action}
 
 ## Recovery note
 
