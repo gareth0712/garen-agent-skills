@@ -266,6 +266,18 @@ class Audit:
         if metadata is None or (previous is not None and previous["sha256"] == metadata["sha256"]):
             return
         state_path = self.output / "AGENT-STATE.md"
+        state_write_event = next(
+            (
+                event
+                for event in reversed(self.events)
+                if event.get("path") == "AGENT-STATE.md"
+                and event.get("sha256") == metadata["sha256"]
+                and event.get("event_type") in {"output_file_created", "output_file_modified"}
+            ),
+            None,
+        )
+        if state_write_event is None:
+            return
         rows = parse_packet_table(state_path)
         for packet_id, row in sorted(rows.items()):
             status = row["status"]
@@ -279,6 +291,8 @@ class Audit:
                     packet_row_sha256=row["row_sha256"],
                     state_path="AGENT-STATE.md",
                     state_sha256=metadata["sha256"],
+                    state_write_event_seq=state_write_event["event_seq"],
+                    state_write_mtime_ns=state_write_event["mtime_ns"],
                     state_epoch=self.state_epoch,
                 )
             elif prior != status:
@@ -290,6 +304,8 @@ class Audit:
                     packet_row_sha256=row["row_sha256"],
                     state_path="AGENT-STATE.md",
                     state_sha256=metadata["sha256"],
+                    state_write_event_seq=state_write_event["event_seq"],
+                    state_write_mtime_ns=state_write_event["mtime_ns"],
                     state_epoch=self.state_epoch,
                 )
                 self.state_transitions.setdefault(packet_id, []).append(self.events[-1])
@@ -302,6 +318,8 @@ class Audit:
                     packet_row_sha256=row["row_sha256"],
                     state_path="AGENT-STATE.md",
                     state_sha256=metadata["sha256"],
+                    state_write_event_seq=state_write_event["event_seq"],
+                    state_write_mtime_ns=state_write_event["mtime_ns"],
                     state_epoch=self.state_epoch,
                 )
             self.packet_rows[packet_id] = row
@@ -311,6 +329,8 @@ class Audit:
                 packet_id=packet_id,
                 prior_status=self.packet_rows[packet_id]["status"],
                 state_sha256=metadata["sha256"],
+                state_write_event_seq=state_write_event["event_seq"],
+                state_write_mtime_ns=state_write_event["mtime_ns"],
                 state_epoch=self.state_epoch,
             )
             del self.packet_rows[packet_id]
@@ -684,8 +704,9 @@ class Audit:
                 request_event_seq=observed["event_seq"],
                 **item,
             )
+        immutable_items = [item for item in sampled_items if item["path"] != "AGENT-STATE.md"]
         manifest_hash = hashlib.sha256(
-            json.dumps(sampled_items, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            json.dumps(immutable_items, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
         self.emit(
             "runner_sample_completed",
@@ -693,7 +714,7 @@ class Audit:
             request_event_seq=observed["event_seq"],
             packet_id=packet_id,
             sampled_paths=sampled_items,
-            manifest_sha256=manifest_hash,
+            immutable_manifest_sha256=manifest_hash,
             state_transition_event_seq=transition["event_seq"],
             state_sha256=next(
                 item["sha256"] for item in sampled_items if item["path"] == "AGENT-STATE.md"
@@ -760,6 +781,7 @@ class Audit:
                     "role": classify_file(relative),
                     "packet_id": packet_id,
                     "observed_write_event_seq": writes[-1]["event_seq"],
+                    "observed_write_mtime_ns": writes[-1]["mtime_ns"],
                 }
             )
         expected_report = f"reports/{packet_id}-report.md"
@@ -787,6 +809,22 @@ class Audit:
         transition = transitions[-1] if transitions else None
         if transition is None:
             errors.append("active_to_verified_state_transition_not_observed")
+        else:
+            later_row_events = [
+                event
+                for event in self.events
+                if event.get("packet_id") == packet_id
+                and event.get("state_epoch") == self.state_epoch
+                and event["event_seq"] > transition["event_seq"]
+                and event.get("event_type")
+                in {
+                    "runner_packet_state_row_updated",
+                    "runner_packet_state_disappeared",
+                    "runner_packet_state_transition_observed",
+                }
+            ]
+            if later_row_events:
+                errors.append("verified_transition_invalidated_by_later_packet_row_event")
         current_row = self.packet_rows.get(packet_id)
         if transition is not None and (current_row is None or current_row["status"] != "verified"):
             errors.append("current_packet_status_not_verified")
@@ -797,7 +835,11 @@ class Audit:
             if current_row is None or current_row["row_sha256"] != transition["packet_row_sha256"]:
                 errors.append("verified_packet_row_changed_after_transition")
             artifact_items = [item for item in items if item["path"] != "AGENT-STATE.md"]
-            if any(item["observed_write_event_seq"] >= transition["event_seq"] for item in artifact_items):
+            if any(
+                item["observed_write_event_seq"] >= transition["state_write_event_seq"]
+                or item["observed_write_mtime_ns"] >= transition["state_write_mtime_ns"]
+                for item in artifact_items
+            ):
                 errors.append("canonical_artifacts_not_observed_before_state_transition")
         return items, transition, errors
 
@@ -821,10 +863,13 @@ class Audit:
                 packet_id, observed["event_seq"]
             )
             errors.extend(current_errors)
+            current_immutable_items = [
+                item for item in current_items if item["path"] != "AGENT-STATE.md"
+            ]
             current_manifest = hashlib.sha256(
-                json.dumps(current_items, ensure_ascii=False, sort_keys=True).encode("utf-8")
+                json.dumps(current_immutable_items, ensure_ascii=False, sort_keys=True).encode("utf-8")
             ).hexdigest()
-            if current_manifest != sample.get("manifest_sha256"):
+            if current_manifest != sample.get("immutable_manifest_sha256"):
                 errors.append("canonical_manifest_changed_after_sample")
             if transition is None or transition["event_seq"] != sample.get("state_transition_event_seq"):
                 errors.append("sample_not_bound_to_current_state_transition")
@@ -843,8 +888,12 @@ class Audit:
             state_transition_event_seq=sample["state_transition_event_seq"],
             state_sha256=sample["state_sha256"],
             packet_row_sha256=sample["packet_row_sha256"],
-            canonical_manifest_sha256=sample["manifest_sha256"],
+            canonical_manifest_sha256=sample["immutable_manifest_sha256"],
             canonical_paths=sample["sampled_paths"],
+            sampled_state_sha256=sample["state_sha256"],
+            verified_state_sha256=next(
+                item["sha256"] for item in current_items if item["path"] == "AGENT-STATE.md"
+            ),
         )
 
     def production_cross_check_summary(self) -> dict[str, Any]:
@@ -928,7 +977,8 @@ class Audit:
                 and evidence_items
                 and containment_item
                 and all(
-                    item["observed_write_event_seq"] < transition["event_seq"]
+                    item["observed_write_event_seq"] < transition["state_write_event_seq"]
+                    and item["observed_write_mtime_ns"] < transition["state_write_mtime_ns"]
                     for item in [report_item, *evidence_items, containment_item]
                 )
             )
@@ -949,6 +999,9 @@ class Audit:
                     containment_item["observed_write_event_seq"] if containment_item else None
                 ),
                 "active_to_verified_transition_event_seq": transition["event_seq"] if transition else None,
+                "verified_state_write_event_seq": (
+                    transition["state_write_event_seq"] if transition else None
+                ),
                 "containment_before_sampling": bool(
                     containment_item
                     and sampled

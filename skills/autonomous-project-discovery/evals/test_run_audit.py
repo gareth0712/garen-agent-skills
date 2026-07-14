@@ -83,7 +83,9 @@ def initialize_repo(repo: Path) -> None:
     run("git", "commit", "--quiet", "-m", "test: baseline", cwd=repo)
 
 
-def start_observer(repo: Path, output: Path, audit: Path) -> tuple[subprocess.Popen[str], Path, Path]:
+def start_observer(
+    repo: Path, output: Path, audit: Path, *, poll_ms: int = 30
+) -> tuple[subprocess.Popen[str], Path, Path]:
     stop = audit / "STOP"
     control = audit / "runner-control.jsonl"
     output.mkdir(parents=True)
@@ -94,7 +96,7 @@ def start_observer(repo: Path, output: Path, audit: Path) -> tuple[subprocess.Po
         [
             sys.executable, str(OBSERVER), "--repo", str(repo), "--output-root", str(output),
             "--audit-dir", str(audit), "--stop-file", str(stop), "--control-file", str(control),
-            "--poll-ms", "30",
+            "--poll-ms", str(poll_ms),
         ],
         cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         encoding="utf-8", errors="replace", env=child_env,
@@ -175,9 +177,9 @@ def write_state(output: Path, audit: Path, status: str, *, first: bool = False) 
         )
 
 
-def update_state_outside_packet_row(output: Path, audit: Path) -> None:
+def update_state_outside_packet_row(output: Path, audit: Path, next_action: str) -> None:
     path = output / "AGENT-STATE.md"
-    updated = state_text("verified") + "\n## Next action\n\nnext_action: write handoff\n"
+    updated = state_text("verified") + f"\n## Next action\n\nnext_action: {next_action}\n"
     path.write_text(updated, encoding="utf-8")
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     wait_for_event(audit, "output_file_modified", path="AGENT-STATE.md", sha256=digest)
@@ -201,7 +203,12 @@ def write_canonical_lifecycle(output: Path, audit: Path) -> tuple[Path, Path]:
     return report, evidence
 
 
-def sample_and_verify(audit: Path, control: Path) -> tuple[str, str]:
+def sample_and_verify(
+    audit: Path,
+    control: Path,
+    *,
+    after_sample: Callable[[], None] | None = None,
+) -> tuple[str, str]:
     first_tag = append_control(
         control,
         {"request_id": "sample-D-001", "action": "sample", "packet_id": "D-001"},
@@ -209,6 +216,8 @@ def sample_and_verify(audit: Path, control: Path) -> tuple[str, str]:
         None,
     )
     wait_for_event(audit, "runner_sample_completed", request_id="sample-D-001")
+    if after_sample is not None:
+        after_sample()
     second_tag = append_control(
         control,
         {
@@ -259,8 +268,14 @@ def test_positive_strict_order_and_outside_reporting() -> None:
         process, stop, control = start_observer(repo, output, audit)
         try:
             report, _evidence = write_canonical_lifecycle(output, audit)
-            update_state_outside_packet_row(output, audit)
-            sample_and_verify(audit, control)
+            update_state_outside_packet_row(output, audit, "write handoff")
+            sample_and_verify(
+                audit,
+                control,
+                after_sample=lambda: update_state_outside_packet_row(
+                    output, audit, "finish handoff"
+                ),
+            )
             (repo / "executor-outside.txt").write_text("outside\n", encoding="utf-8")
             audit.mkdir(exist_ok=True)
             (audit / "executor-sneak.txt").write_text("not runner-owned\n", encoding="utf-8")
@@ -335,6 +350,16 @@ def test_verified_packet_row_change_rejects() -> None:
             state = output / "AGENT-STATE.md"
             state.write_text(state_text("verified").replace("| none | 0 |", "| changed | 0 |"), encoding="utf-8")
             wait_for_event(audit, "runner_packet_state_row_updated", packet_id="D-001")
+            state.write_text(state_text("verified"), encoding="utf-8")
+            wait_for(
+                lambda: sum(
+                    event.get("event_type") == "runner_packet_state_row_updated"
+                    and event.get("packet_id") == "D-001"
+                    for event in read_events(audit)
+                )
+                >= 2,
+                "verified packet row mutation and restoration",
+            )
             append_control(
                 control,
                 {"request_id": "sample-D-001", "action": "sample", "packet_id": "D-001"},
@@ -345,7 +370,51 @@ def test_verified_packet_row_change_rejects() -> None:
             summary = finalize_observer(process, audit, stop)
         finally:
             stop_after_failure(process, audit, stop)
-        assert "verified_packet_row_changed_after_transition" in rejected["validation_errors"]
+        assert (
+            "verified_transition_invalidated_by_later_packet_row_event"
+            in rejected["validation_errors"]
+        )
+        assert summary["lifecycle"]["D-001"]["strictly_ordered"] is False
+
+
+def test_verified_state_before_artifacts_in_same_poll_rejects() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-same-poll-order-") as raw:
+        repo = Path(raw).resolve()
+        initialize_repo(repo)
+        output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+        process, stop, control = start_observer(repo, output, audit, poll_ms=500)
+        try:
+            write_state(output, audit, "in_progress", first=True)
+            (output / "AGENT-STATE.md").write_text(state_text("verified"), encoding="utf-8")
+            time.sleep(0.05)
+            report = output / "reports" / "D-001-report.md"
+            report.parent.mkdir(parents=True)
+            report.write_text("# Discovery Packet D-001 Report\n\nPASS\n", encoding="utf-8")
+            evidence = output / "evidence" / "D-001" / "result.txt"
+            evidence.parent.mkdir(parents=True)
+            evidence.write_text("observed signal\n", encoding="utf-8")
+            (evidence.parent / "path-containment-postwrite.md").write_text(
+                "post-write physical containment: PASS\n", encoding="utf-8"
+            )
+            wait_for_event(
+                audit,
+                "runner_packet_state_transition_observed",
+                packet_id="D-001",
+                to_status="verified",
+            )
+            append_control(
+                control,
+                {"request_id": "sample-D-001", "action": "sample", "packet_id": "D-001"},
+                1,
+                None,
+            )
+            rejected = wait_for_event(audit, "runner_control_rejected", request_id="sample-D-001")
+            summary = finalize_observer(process, audit, stop)
+        finally:
+            stop_after_failure(process, audit, stop)
+        assert "canonical_artifacts_not_observed_before_state_transition" in rejected[
+            "validation_errors"
+        ]
         assert summary["lifecycle"]["D-001"]["strictly_ordered"] is False
 
 
@@ -507,6 +576,7 @@ def main() -> None:
         test_positive_strict_order_and_outside_reporting()
         test_first_seen_verified_and_empty_noncanonical_artifacts_reject()
         test_verified_packet_row_change_rejects()
+        test_verified_state_before_artifacts_in_same_poll_rejects()
         test_forged_and_replayed_controls_reject()
         test_rewritten_and_truncated_controls_invalidate()
         test_production_claims_rewrite_and_reference_escape_remain_cross_checks()

@@ -45,7 +45,7 @@ The observer independently requires and hashes this exact canonical set:
 - every non-empty worker-evidence file under `evidence/D-001/` (excluding the two containment files);
 - non-empty `evidence/D-001/path-containment-postwrite.md`.
 
-It also requires an earlier observer-visible status for the same packet in the canonical `## Packets` table, followed by a later active (`pending`, `in_progress`, or `blocked`) to `verified` transition. A first-seen already-verified row is insufficient. All canonical report/evidence/post-write files must have been observed before that transition. The observer binds the transition to a digest of the canonical packet row; later updates elsewhere in `AGENT-STATE.md` are allowed, but changing the verified packet row invalidates acceptance. The sampled manifest still includes the current full-state hash.
+It also requires an earlier observer-visible status for the same packet in the canonical `## Packets` table, followed by a later active (`pending`, `in_progress`, or `blocked`) to `verified` transition. A first-seen already-verified row is insufficient. Every canonical report/evidence/post-write file write must precede the corresponding verified `AGENT-STATE.md` write by both observer event order and filesystem mtime; equal/ambiguous timing rejects. The transition is bound to a digest of the canonical packet row. Any later observed mutation, disappearance, or incompatible transition permanently invalidates that verified transition even if the old row bytes are restored. Updates elsewhere in `AGENT-STATE.md` remain allowed.
 
 After `runner_sample_completed`, append a chained verification trigger:
 
@@ -53,7 +53,7 @@ After `runner_sample_completed`, append a chained verification trigger:
 {"control_seq":2,"previous_hmac":"<prior-tag>","request_id":"verify-D-001","action":"verify","packet_id":"D-001","sample_request_id":"sample-D-001","hmac":"<parent-computed-tag>"}
 ```
 
-The request is only a trigger. The observer reopens and rehashes the entire canonical set, confirms the current verified packet row and the same observed transition, and compares the new manifest to the sampled manifest. Only then does it emit `runner_verification_observed`. Any sampled-artifact mutation, missing/empty/noncanonical artifact, missing transition, verified-row rewrite, or manifest mismatch emits `runner_control_rejected`.
+The request is only a trigger. The observer reopens and rehashes the entire canonical set, confirms the current verified packet row and the same observed transition, and compares the immutable report/evidence/containment manifest to the sampled manifest. It records both full-state hashes but does not require unrelated mutable state sections to remain byte-identical between sample and verify. Only then does it emit `runner_verification_observed`. Any immutable sampled-artifact mutation, missing/empty/noncanonical artifact, missing/invalidated transition, verified-row rewrite, or manifest mismatch emits `runner_control_rejected`.
 
 ## Evidence boundary
 
@@ -69,4 +69,4 @@ Production `EVENTS.jsonl` is only a cross-check. The observer validates observed
 python skills/autonomous-project-discovery/evals/test_run_audit.py
 ```
 
-The behavioral suite covers positive strict ordering with a legitimate post-transition update outside the packet row, plus: no state transition; first-seen verified state; verified-row mutation; empty/noncanonical artifacts; forged, replayed, rewritten, and truncated control; audit/output ancestor rejection; a real outside-output write; valid/invalid production-only claims; production stream rewriting; path/hash escape; neutral roles for all nine gates; Git isolation; exact hashes; and secret non-persistence. Temporary repositories are removed automatically and Python bytecode is disabled.
+The behavioral suite covers positive strict ordering with legitimate non-row state updates before sampling and between sampling/verification, plus: verified state written before later artifacts in the same polling snapshot; no state transition; first-seen verified state; verified-row mutate-and-restore; empty/noncanonical artifacts; forged, replayed, rewritten, and truncated control; audit/output ancestor rejection; a real outside-output write; valid/invalid production-only claims; production stream rewriting; path/hash escape; neutral roles for all nine gates; Git isolation; exact hashes; and secret non-persistence. Temporary repositories are removed automatically and Python bytecode is disabled.
