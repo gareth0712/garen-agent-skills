@@ -1,78 +1,72 @@
 # Runner-owned Discovery eval audit
 
-`run_audit.py` is a reproducible eval-harness observer. It is not part of a Discovery run's production control plane and does not replace `AGENT-STATE.md` or production `EVENTS.jsonl`.
+`run_audit.py` is a reproducible eval-harness observer. It is not part of a Discovery run's production control plane and does not replace canonical `AGENT-STATE.md` or production `EVENTS.jsonl`.
 
-## Isolation contract
+## Isolation and secret contract
 
 - Start the observer before the cold-start executor.
 - Put `--output-root` inside the evaluated Git repository/worktree.
-- Put `--audit-dir` inside that repository/worktree but outside `--output-root`; use a sibling such as `with_skill/run-1/runner-audit/`.
-- Put `--stop-file` directly inside `--audit-dir`.
-- Put `--control-file` directly inside `--audit-dir`, or omit it to use `runner-control.jsonl` there.
-- Do not expose the audit directory, control file, or stop file to the executor as an input, output, report, or evidence path. The executor must neither read nor cite runner-owned artifacts. Only the parent eval runner writes control requests.
-- Use a fresh audit directory for every run. The observer truncates `runner-audit.jsonl` at startup and is not a concurrent multi-run service.
+- Put `--audit-dir` beside `--output-root`. The resolved roots must be physical siblings; neither may contain the other. Use fresh directories such as `run-1/outputs/` and `run-1/runner-audit/`.
+- Put `--stop-file` and `--control-file` directly inside `--audit-dir`. The four exact runner-owned files are `runner-audit.jsonl`, `summary.json`, the configured control file, and the configured stop file. Other descendants of `--audit-dir` remain ordinary outside-output writes.
+- Generate at least 32 random bytes and supply them only through `DISCOVERY_RUNNER_AUDIT_HMAC_KEY` to the observer and the parent runner that signs controls. Never pass the variable to the cold-start executor. Never put the secret in a command line, file, log, event, summary, prompt, report, or evidence artifact. HMAC tags are not the secret.
+- Do not expose audit/control/stop paths to the executor. Only the parent eval runner signs controls.
+- Use a fresh audit directory for every run. A non-empty control file is rejected at startup.
 
-## Invocation and finalization
-
-From a clean checkout, use the active Python 3 interpreter:
+Example observer invocation after setting the environment variable in the private parent/observer environment:
 
 ```text
-python skills/autonomous-project-discovery/evals/run_audit.py --repo <absolute-repository-or-worktree> --output-root <absolute-assigned-output-root> --audit-dir <absolute-sibling-runner-audit-dir> --stop-file <absolute-sibling-runner-audit-dir>/STOP --control-file <absolute-sibling-runner-audit-dir>/runner-control.jsonl --poll-ms 100
+python skills/autonomous-project-discovery/evals/run_audit.py --repo <absolute-repository-or-worktree> --output-root <absolute-run-dir>/outputs --audit-dir <absolute-run-dir>/runner-audit --stop-file <absolute-run-dir>/runner-audit/STOP --control-file <absolute-run-dir>/runner-audit/runner-control.jsonl --poll-ms 100
 ```
 
-1. Launch the command as a separate process and wait until `runner-audit.jsonl` contains `runner_started`.
-2. Run exactly one cold-start eval executor. Allow at least one polling interval between lifecycle writes when strict ordering is an assertion.
-3. After the executor exits and its output writes are flushed, append runner-owned sample and verification requests to the control file as described below. Wait for each corresponding audit event; production `EVENTS.jsonl` cannot satisfy these requests.
-4. Create the stop file only after the required runner verification requests were accepted (or after recording that they failed). Requests appended after the stop file are outside the contract.
-5. Wait for the observer process to exit successfully. A run is finalized only when `summary.json` exists and the last JSONL event is `runner_finalized` with the summary hash.
-6. Preserve the audit directory beside the eval outputs for grading. A missing/failed observer is an eval-harness failure, not evidence that the skill passed.
+Wait for `runner_started`, run one cold-start executor without the HMAC environment variable, then append authenticated controls one at a time. Stop only after the requested terminal events. A run is final only when the process exits successfully, `summary.json` exists, and the last event is `runner_finalized` with the summary hash.
 
-The observer refuses an output root outside the repository, an audit directory outside the repository or inside the output root, a stop/control file outside the audit directory, a control file that aliases the stop file, a stale non-empty control file, and polling intervals below 20 ms.
+## Authenticated append-only control
 
-## Runner-owned control interface
+Each newline-terminated control object contains:
 
-`runner-control.jsonl` is an append-only request channel owned by the parent eval runner. Start with an absent or empty file. Append one complete newline-terminated JSON object at a time, then wait for the requested terminal event in `runner-audit.jsonl` before appending a dependent request.
+- `control_seq`: positive integers starting at 1 with no gaps;
+- `previous_hmac`: `null` for sequence 1, then the prior line's lowercase HMAC;
+- unique `request_id`, `action`, and `packet_id`;
+- action fields;
+- `hmac`: lowercase HMAC-SHA256 over canonical UTF-8 JSON of every other field (`sort_keys=true`, compact separators).
 
-To ask the observer itself to open and hash specific output artifacts:
+The observer validates the complete-line prefix on every poll. Forged, replayed, out-of-order, rewritten, or truncated controls are rejected or invalidate the channel; lifecycle acceptance is false whenever authentication or append-only history is invalid. Audit events never copy the HMAC or secret.
+
+An authenticated sample request has no executor-selected path list:
 
 ```json
-{"request_id":"sample-D-001","action":"sample","packet_id":"D-001","paths":["reports/D-001-report.md","evidence/D-001/result.txt"]}
+{"control_seq":1,"previous_hmac":null,"request_id":"sample-D-001","action":"sample","packet_id":"D-001","hmac":"<parent-computed-tag>"}
 ```
 
-Every path must be a relative, existing regular file physically contained by the assigned output root. The observer requires a matching, earlier filesystem write observation with the same SHA-256. Success emits one `runner_artifact_sampled` event per path followed by `runner_sample_completed` with a manifest hash. Invalid, missing, escaped, duplicated, or unobserved paths emit `runner_control_rejected` and no completed sample.
+The observer independently requires and hashes this exact canonical set:
 
-After a completed sample, request runner verification:
+- root `AGENT-STATE.md`;
+- `reports/D-001-report.md`;
+- every non-empty worker-evidence file under `evidence/D-001/` (excluding the two containment files);
+- non-empty `evidence/D-001/path-containment-postwrite.md`.
+
+It also requires an earlier observer-visible status for the same packet in the canonical `## Packets` table, followed by a later active (`pending`, `in_progress`, or `blocked`) to `verified` transition. A first-seen already-verified row is insufficient. All canonical report/evidence/post-write files must have been observed before that transition. The observer binds the transition to a digest of the canonical packet row; later updates elsewhere in `AGENT-STATE.md` are allowed, but changing the verified packet row invalidates acceptance. The sampled manifest still includes the current full-state hash.
+
+After `runner_sample_completed`, append a chained verification trigger:
 
 ```json
-{"request_id":"verify-D-001","action":"verify","packet_id":"D-001","sample_request_id":"sample-D-001"}
+{"control_seq":2,"previous_hmac":"<prior-tag>","request_id":"verify-D-001","action":"verify","packet_id":"D-001","sample_request_id":"sample-D-001","hmac":"<parent-computed-tag>"}
 ```
 
-The observer accepts this request only when the referenced completed sample contains that packet's worker report and worker evidence, and the independently observed order is report write < evidence write < sample completion < verification request. Success emits `runner_verification_accepted`; a missing sample, packet mismatch, incomplete sample, or reversed order emits `runner_control_rejected`. Request IDs must be unique. The control file and resulting audit events are runner-owned evidence; they are not production artifacts and must remain undisclosed to the executor.
+The request is only a trigger. The observer reopens and rehashes the entire canonical set, confirms the current verified packet row and the same observed transition, and compares the new manifest to the sampled manifest. Only then does it emit `runner_verification_observed`. Any sampled-artifact mutation, missing/empty/noncanonical artifact, missing transition, verified-row rewrite, or manifest mismatch emits `runner_control_rejected`.
 
-## Schema and evidence boundary
+## Evidence boundary
 
-`runner-audit.jsonl` is append-only runner evidence. Each line has monotonically increasing `event_seq`, an ISO-8601 `timestamp`, `event_type`, and event-specific fields. File events include the output-relative path, absolute observed path, SHA-256, size, filesystem modification time, role, and inferred packet ID. Files under `gates/` use the neutral role `canonical_gate`; the audit does not relabel operational or external gates as human gates.
+`runner-audit.jsonl` is append-only runner evidence with monotonic `event_seq`, timezone-aware timestamps, hashes, sizes, roles, and packet IDs. Files under `gates/` always use neutral `canonical_gate` roles.
 
-Production `EVENTS.jsonl` lines are copied only as hashed cross-check observations. For each source stream, the observer separately validates append-only history, strictly increasing positive integer `event_seq` values, present timezone-aware ISO-8601 timestamps in increasing order, and references. Every supplied reference must resolve to an existing regular file inside the assigned output root and carry either a matching SHA-256 or a Git revision whose referenced blob matches the observed file. Sampling/verified claims require at least one reference. Rewriting or truncating an observed prefix, or supplying an invalid sequence, timestamp, path, hash, revision, or empty required references, remains visible under `production_cross_checks`, but never creates runner sampling or verification events.
+Production `EVENTS.jsonl` is only a cross-check. The observer validates observed complete-line append-only history, source sequence/timestamps, contained references, and SHA-256 or Git-revision content. Production claims never create runner sample, transition, or verification events. Polling proves only mutations visible across snapshots.
 
-`summary.json` has `schema: runner-audit-v1` and records:
+`summary.json` uses `runner-audit-v2` and records Git snapshots, exact outside-output changes, output files, production-code candidates, authenticated control integrity, per-packet lifecycle ordering, production cross-checks, and observed/unaudited channels. Strict order requires canonical artifact writes < observed active-to-verified state transition < authenticated sample < independent verification re-sample. Network, remote services, out-of-repository or ignored writes outside assigned roots, credentials, external processes, publishing, deployment, messaging, purchases, and host-private tool activity remain `unaudited`.
 
-- initial/final Git HEAD, tracked status, and nonignored untracked paths;
-- whether tracked HEAD/status remained unchanged;
-- final files under the assigned output root and new nonignored paths outside it;
-- production-code candidates under the assigned output root;
-- per-packet lifecycle event sequence numbers, `strictly_ordered`, and whether post-write containment preceded sampling;
-- per-file and per-claim production cross-check validity, resolved reference hashes, and validation errors;
-- exact observed and `unaudited` channels plus the clean-claim boundary.
-
-Strict lifecycle order means the runner independently observed and hashed worker report creation before worker evidence creation, then the parent runner requested an observer-owned sample and a dependent verification in that order. It is false when either runner request is missing, rejected, or out of order. Orchestrator-owned preflight and path-containment evidence have distinct roles and cannot masquerade as worker evidence. Production sampling/verification remain cross-checks only. Graders must not promote those cross-checks into stronger claims, and must keep network, remote services, out-of-repository writes, ignored paths outside assigned roots, credential stores, publishing, deployment, messaging, purchases, external processes, and host-private tool activity labeled `unaudited`.
-
-## Automated smoke test
-
-Run:
+## Smoke test
 
 ```text
 python skills/autonomous-project-discovery/evals/test_run_audit.py
 ```
 
-The behavioral test creates temporary real Git repositories and proves both failure and success paths. It checks that all nine canonical gate types receive the neutral role; valid or invalid production-only claims cannot pass; reversed source sequence, missing timestamp, empty references, and unhashed references are invalid cross-checks; a runner sample without runner verification remains false; premature verification is rejected; and valid runner sample/verification control produces `strictly_ordered: true`. It also preserves the original isolation, schema, hash, monotonic audit event, clean tracked state, unaudited-channel, and containment-before-sampling checks. Temporary repositories are removed automatically without writing Python bytecode into the skill package.
+The behavioral suite covers positive strict ordering with a legitimate post-transition update outside the packet row, plus: no state transition; first-seen verified state; verified-row mutation; empty/noncanonical artifacts; forged, replayed, rewritten, and truncated control; audit/output ancestor rejection; a real outside-output write; valid/invalid production-only claims; production stream rewriting; path/hash escape; neutral roles for all nine gates; Git isolation; exact hashes; and secret non-persistence. Temporary repositories are removed automatically and Python bytecode is disabled.

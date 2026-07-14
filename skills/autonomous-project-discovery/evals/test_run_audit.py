@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -15,6 +18,7 @@ from typing import Any, Callable
 
 HERE = Path(__file__).resolve().parent
 OBSERVER = HERE / "run_audit.py"
+SECRET_ENV = "DISCOVERY_RUNNER_AUDIT_HMAC_KEY"
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
 
@@ -23,13 +27,8 @@ from run_audit import classify_file  # noqa: E402
 
 def run(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        list(args),
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=True,
+        list(args), cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+        errors="replace", check=True,
     )
 
 
@@ -38,7 +37,7 @@ def wait_for(predicate: Callable[[], bool], description: str, timeout: float = 1
     while time.monotonic() < deadline:
         if predicate():
             return
-        time.sleep(0.05)
+        time.sleep(0.04)
     raise AssertionError(f"timed out waiting for {description}")
 
 
@@ -55,15 +54,24 @@ def read_events(audit: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
-def wait_for_event(audit: Path, event_type: str, **fields: Any) -> None:
-    def found() -> bool:
-        return any(
-            event.get("event_type") == event_type
-            and all(event.get(key) == value for key, value in fields.items())
-            for event in read_events(audit)
-        )
+def wait_for_event(audit: Path, event_type: str, **fields: Any) -> dict[str, Any]:
+    found: dict[str, Any] | None = None
 
-    wait_for(found, f"{event_type} {fields}")
+    def predicate() -> bool:
+        nonlocal found
+        found = next(
+            (
+                event for event in read_events(audit)
+                if event.get("event_type") == event_type
+                and all(event.get(key) == value for key, value in fields.items())
+            ),
+            None,
+        )
+        return found is not None
+
+    wait_for(predicate, f"{event_type} {fields}")
+    assert found is not None
+    return found
 
 
 def initialize_repo(repo: Path) -> None:
@@ -79,29 +87,17 @@ def start_observer(repo: Path, output: Path, audit: Path) -> tuple[subprocess.Po
     stop = audit / "STOP"
     control = audit / "runner-control.jsonl"
     output.mkdir(parents=True)
+    child_env = os.environ.copy()
+    child_env["PYTHONDONTWRITEBYTECODE"] = "1"
+    assert SECRET_ENV in child_env
     process = subprocess.Popen(
         [
-            sys.executable,
-            str(OBSERVER),
-            "--repo",
-            str(repo),
-            "--output-root",
-            str(output),
-            "--audit-dir",
-            str(audit),
-            "--stop-file",
-            str(stop),
-            "--control-file",
-            str(control),
-            "--poll-ms",
-            "40",
+            sys.executable, str(OBSERVER), "--repo", str(repo), "--output-root", str(output),
+            "--audit-dir", str(audit), "--stop-file", str(stop), "--control-file", str(control),
+            "--poll-ms", "30",
         ],
-        cwd=repo,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
+        cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        encoding="utf-8", errors="replace", env=child_env,
     )
     wait_for_event(audit, "runner_started")
     return process, stop, control
@@ -114,12 +110,15 @@ def finalize_observer(process: subprocess.Popen[str], audit: Path, stop: Path) -
     summary = json.loads((audit / "summary.json").read_text(encoding="utf-8"))
     events = read_events(audit)
     assert events[-1]["event_type"] == "runner_finalized"
-    assert [item["event_seq"] for item in events] == list(range(1, len(events) + 1))
-    assert all(item.get("timestamp") for item in events)
+    assert [event["event_seq"] for event in events] == list(range(1, len(events) + 1))
+    assert all(event.get("timestamp") for event in events)
+    secret = os.environ[SECRET_ENV]
+    assert secret not in json.dumps(events)
+    assert secret not in json.dumps(summary)
     return summary
 
 
-def stop_observer_after_failure(process: subprocess.Popen[str], audit: Path, stop: Path) -> None:
+def stop_after_failure(process: subprocess.Popen[str], audit: Path, stop: Path) -> None:
     if process.poll() is not None:
         return
     audit.mkdir(parents=True, exist_ok=True)
@@ -131,168 +130,367 @@ def stop_observer_after_failure(process: subprocess.Popen[str], audit: Path, sto
         process.communicate(timeout=5)
 
 
+def append_control(
+    path: Path,
+    payload: dict[str, object],
+    control_seq: int,
+    previous_hmac: str | None,
+    *,
+    forge: bool = False,
+) -> str:
+    unsigned = {"control_seq": control_seq, "previous_hmac": previous_hmac, **payload}
+    canonical = json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    tag = hmac.new(os.environ[SECRET_ENV].encode("utf-8"), canonical, hashlib.sha256).hexdigest()
+    if forge:
+        tag = "0" * 64 if tag != "0" * 64 else "1" * 64
+    append_jsonl(path, {**unsigned, "hmac": tag})
+    return tag
+
+
 def write_and_observe(audit: Path, path: Path, relative: str, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     wait_for_event(audit, "output_file_created", path=relative)
 
 
-def write_lifecycle_outputs(output: Path, audit: Path) -> tuple[Path, Path]:
-    write_and_observe(
-        audit,
-        output / "evidence" / "D-001" / "path-containment-preflight.md",
-        "evidence/D-001/path-containment-preflight.md",
-        "orchestrator containment preflight: PASS\n",
-    )
+def state_text(status: str) -> str:
+    return f"""# Agent State
+
+## Packets
+
+| Packet | Goal | Size | Weight | Dependencies | Status | Report | Evidence | Requested model | Effective model | Fallback | Retries |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| D-001 | inspect | Small | 1 | none | {status} | reports/D-001-report.md | evidence/D-001/result.txt | host_default | host_default | none | 0 |
+"""
+
+
+def write_state(output: Path, audit: Path, status: str, *, first: bool = False) -> None:
+    path = output / "AGENT-STATE.md"
+    path.write_text(state_text(status), encoding="utf-8")
+    if first:
+        wait_for_event(audit, "runner_packet_state_observed", packet_id="D-001", status=status)
+    else:
+        wait_for_event(
+            audit, "runner_packet_state_transition_observed", packet_id="D-001", to_status=status
+        )
+
+
+def update_state_outside_packet_row(output: Path, audit: Path) -> None:
+    path = output / "AGENT-STATE.md"
+    updated = state_text("verified") + "\n## Next action\n\nnext_action: write handoff\n"
+    path.write_text(updated, encoding="utf-8")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    wait_for_event(audit, "output_file_modified", path="AGENT-STATE.md", sha256=digest)
+
+
+def write_canonical_lifecycle(output: Path, audit: Path) -> tuple[Path, Path]:
+    write_state(output, audit, "in_progress", first=True)
     report = output / "reports" / "D-001-report.md"
-    write_and_observe(audit, report, "reports/D-001-report.md", "# D-001 report\n\nPASS\n")
+    write_and_observe(
+        audit, report, "reports/D-001-report.md", "# Discovery Packet D-001 Report\n\nPASS\n"
+    )
     evidence = output / "evidence" / "D-001" / "result.txt"
     write_and_observe(audit, evidence, "evidence/D-001/result.txt", "observed signal\n")
     write_and_observe(
         audit,
         output / "evidence" / "D-001" / "path-containment-postwrite.md",
         "evidence/D-001/path-containment-postwrite.md",
-        "orchestrator post-write containment: PASS\n",
+        "post-write physical containment: PASS\n",
     )
+    write_state(output, audit, "verified")
     return report, evidence
 
 
-def assert_invalid_location_rejected(repo: Path, output: Path) -> None:
-    invalid_audit = output / "runner-audit-must-be-rejected"
-    invalid = subprocess.run(
-        [
-            sys.executable,
-            str(OBSERVER),
-            "--repo",
-            str(repo),
-            "--output-root",
-            str(output),
-            "--audit-dir",
-            str(invalid_audit),
-            "--stop-file",
-            str(invalid_audit / "STOP"),
-        ],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
+def sample_and_verify(audit: Path, control: Path) -> tuple[str, str]:
+    first_tag = append_control(
+        control,
+        {"request_id": "sample-D-001", "action": "sample", "packet_id": "D-001"},
+        1,
+        None,
     )
-    assert invalid.returncode != 0
-    assert "outside assigned output root" in invalid.stderr
+    wait_for_event(audit, "runner_sample_completed", request_id="sample-D-001")
+    second_tag = append_control(
+        control,
+        {
+            "request_id": "verify-D-001", "action": "verify", "packet_id": "D-001",
+            "sample_request_id": "sample-D-001",
+        },
+        2,
+        first_tag,
+    )
+    wait_for_event(audit, "runner_verification_observed", request_id="verify-D-001")
+    return first_tag, second_tag
 
 
 def test_gate_roles_are_neutral() -> None:
     gate_types = (
-        "preference",
-        "product_decision",
-        "authority",
-        "uat",
-        "security_legal",
-        "external_evidence",
-        "capability",
-        "environment",
-        "internal_recovery",
+        "preference", "product_decision", "authority", "uat", "security_legal",
+        "external_evidence", "capability", "environment", "internal_recovery",
     )
     for index, gate_type in enumerate(gate_types, start=1):
-        role = classify_file(f"gates/G-{index:03d}-{gate_type}.md")
-        assert role == "canonical_gate", (gate_type, role)
+        assert classify_file(f"gates/G-{index:03d}-{gate_type}.md") == "canonical_gate"
 
 
-def test_production_only_invalid_claims_cannot_pass() -> None:
-    with tempfile.TemporaryDirectory(prefix="discovery-audit-production-only-") as raw:
+def test_invalid_root_relationships_are_rejected() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-roots-") as raw:
         repo = Path(raw).resolve()
         initialize_repo(repo)
         output = repo / "eval" / "outputs"
-        audit = repo / "eval" / "runner-audit"
+        output.mkdir(parents=True)
+        invalid_audits = [output / "audit", repo, repo / "eval", repo / "other" / "audit"]
+        for index, audit in enumerate(invalid_audits):
+            result = subprocess.run(
+                [
+                    sys.executable, str(OBSERVER), "--repo", str(repo), "--output-root", str(output),
+                    "--audit-dir", str(audit), "--stop-file", str(audit / f"STOP-{index}"),
+                ],
+                cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                check=False, env=os.environ.copy(),
+            )
+            assert result.returncode != 0
+            assert "physically disjoint siblings" in result.stderr
+
+
+def test_positive_strict_order_and_outside_reporting() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-positive-") as raw:
+        repo = Path(raw).resolve()
+        initialize_repo(repo)
+        output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+        process, stop, control = start_observer(repo, output, audit)
+        try:
+            report, _evidence = write_canonical_lifecycle(output, audit)
+            update_state_outside_packet_row(output, audit)
+            sample_and_verify(audit, control)
+            (repo / "executor-outside.txt").write_text("outside\n", encoding="utf-8")
+            audit.mkdir(exist_ok=True)
+            (audit / "executor-sneak.txt").write_text("not runner-owned\n", encoding="utf-8")
+            summary = finalize_observer(process, audit, stop)
+        finally:
+            stop_after_failure(process, audit, stop)
+        lifecycle = summary["lifecycle"]["D-001"]
+        assert summary["schema"] == "runner-audit-v2"
+        assert lifecycle["strictly_ordered"] is True
+        assert lifecycle["active_to_verified_transition_event_seq"] is not None
+        assert lifecycle["containment_before_sampling"] is True
+        assert summary["runner_control_integrity"]["authenticated_hmac_chain_valid"] is True
+        outside = summary["new_nonignored_untracked_outside_output"]
+        assert "executor-outside.txt" in outside
+        assert "eval/runner-audit/executor-sneak.txt" in outside
+        events = read_events(audit)
+        sample = next(
+            event for event in events
+            if event.get("event_type") == "runner_artifact_sampled"
+            and event.get("path") == "reports/D-001-report.md"
+        )
+        assert sample["sha256"] == hashlib.sha256(report.read_bytes()).hexdigest()
+
+
+def test_first_seen_verified_and_empty_noncanonical_artifacts_reject() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-no-transition-") as raw:
+        repo = Path(raw).resolve()
+        initialize_repo(repo)
+        output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+        process, stop, control = start_observer(repo, output, audit)
+        try:
+            write_and_observe(audit, output / "reports" / "D-001-report.md", "reports/D-001-report.md", "")
+            write_and_observe(
+                audit, output / "evidence" / "D-001.txt", "evidence/D-001.txt", "noncanonical\n"
+            )
+            write_and_observe(
+                audit,
+                output / "evidence" / "D-001" / "path-containment-postwrite.md",
+                "evidence/D-001/path-containment-postwrite.md",
+                "",
+            )
+            write_state(output, audit, "verified", first=True)
+            append_control(
+                control,
+                {"request_id": "sample-D-001", "action": "sample", "packet_id": "D-001"},
+                1,
+                None,
+            )
+            rejected = wait_for_event(audit, "runner_control_rejected", request_id="sample-D-001")
+            summary = finalize_observer(process, audit, stop)
+        finally:
+            stop_after_failure(process, audit, stop)
+        errors = rejected["validation_errors"]
+        assert any("canonical_artifact_empty:reports/D-001-report.md" == error for error in errors)
+        assert any(
+            "canonical_artifact_empty:evidence/D-001/path-containment-postwrite.md" == error
+            for error in errors
+        )
+        assert "canonical_worker_evidence_missing" in errors
+        assert "active_to_verified_state_transition_not_observed" in errors
+        assert summary["lifecycle"]["D-001"]["strictly_ordered"] is False
+
+
+def test_verified_packet_row_change_rejects() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-row-change-") as raw:
+        repo = Path(raw).resolve()
+        initialize_repo(repo)
+        output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+        process, stop, control = start_observer(repo, output, audit)
+        try:
+            write_canonical_lifecycle(output, audit)
+            state = output / "AGENT-STATE.md"
+            state.write_text(state_text("verified").replace("| none | 0 |", "| changed | 0 |"), encoding="utf-8")
+            wait_for_event(audit, "runner_packet_state_row_updated", packet_id="D-001")
+            append_control(
+                control,
+                {"request_id": "sample-D-001", "action": "sample", "packet_id": "D-001"},
+                1,
+                None,
+            )
+            rejected = wait_for_event(audit, "runner_control_rejected", request_id="sample-D-001")
+            summary = finalize_observer(process, audit, stop)
+        finally:
+            stop_after_failure(process, audit, stop)
+        assert "verified_packet_row_changed_after_transition" in rejected["validation_errors"]
+        assert summary["lifecycle"]["D-001"]["strictly_ordered"] is False
+
+
+def test_forged_and_replayed_controls_reject() -> None:
+    for mode in ("forged", "replayed"):
+        with tempfile.TemporaryDirectory(prefix=f"discovery-audit-{mode}-") as raw:
+            repo = Path(raw).resolve()
+            initialize_repo(repo)
+            output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+            process, stop, control = start_observer(repo, output, audit)
+            try:
+                write_canonical_lifecycle(output, audit)
+                tag = append_control(
+                    control,
+                    {"request_id": "sample-D-001", "action": "sample", "packet_id": "D-001"},
+                    1,
+                    None,
+                    forge=mode == "forged",
+                )
+                terminal = "runner_control_rejected" if mode == "forged" else "runner_sample_completed"
+                wait_for_event(audit, terminal, request_id="sample-D-001")
+                if mode == "replayed":
+                    append_control(
+                        control,
+                        {"request_id": "sample-D-001", "action": "sample", "packet_id": "D-001"},
+                        1,
+                        None,
+                    )
+                    wait_for_event(audit, "runner_control_rejected", request_id="sample-D-001")
+                summary = finalize_observer(process, audit, stop)
+            finally:
+                stop_after_failure(process, audit, stop)
+            assert summary["runner_control_integrity"]["authenticated_hmac_chain_valid"] is False
+            assert summary["lifecycle"]["D-001"]["strictly_ordered"] is False
+            assert tag != os.environ[SECRET_ENV]
+
+
+def test_rewritten_and_truncated_controls_invalidate() -> None:
+    for mutation in ("rewritten", "truncated"):
+        with tempfile.TemporaryDirectory(prefix=f"discovery-audit-control-{mutation}-") as raw:
+            repo = Path(raw).resolve()
+            initialize_repo(repo)
+            output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
+            process, stop, control = start_observer(repo, output, audit)
+            try:
+                write_canonical_lifecycle(output, audit)
+                append_control(
+                    control,
+                    {"request_id": "sample-D-001", "action": "sample", "packet_id": "D-001"},
+                    1,
+                    None,
+                )
+                wait_for_event(audit, "runner_sample_completed", request_id="sample-D-001")
+                original = control.read_text(encoding="utf-8")
+                if mutation == "rewritten":
+                    control.write_text(original.replace("sample-D-001", "tamper-D-001"), encoding="utf-8")
+                else:
+                    control.write_text("", encoding="utf-8")
+                wait_for_event(
+                    audit, "runner_control_stream_mutation_observed", mutation=mutation
+                )
+                summary = finalize_observer(process, audit, stop)
+            finally:
+                stop_after_failure(process, audit, stop)
+            assert summary["runner_control_integrity"]["append_only_valid"] is False
+            assert summary["lifecycle"]["D-001"]["strictly_ordered"] is False
+
+
+def test_production_claims_rewrite_and_reference_escape_remain_cross_checks() -> None:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-production-") as raw:
+        repo = Path(raw).resolve()
+        initialize_repo(repo)
+        output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
         process, stop, _control = start_observer(repo, output, audit)
         try:
-            report, evidence = write_lifecycle_outputs(output, audit)
+            report, _evidence = write_canonical_lifecycle(output, audit)
+            outside = repo / "outside.txt"
+            outside.write_text("outside\n", encoding="utf-8")
             production = output / "EVENTS.jsonl"
             append_jsonl(
                 production,
                 {
-                    "event_seq": 9,
-                    "event_type": "artifact_sampled",
-                    "packet_id": "D-001",
-                    "references": [],
-                },
-            )
-            append_jsonl(
-                production,
-                {
-                    "event_seq": 1,
-                    "timestamp": "2026-01-01T00:00:01Z",
-                    "event_type": "packet_verified",
-                    "packet_id": "D-001",
-                    "references": [{"path": evidence.relative_to(output).as_posix()}],
+                    "event_seq": 1, "timestamp": "2026-01-01T00:00:00Z",
+                    "event_type": "artifact_sampled", "packet_id": "D-001",
+                    "references": [
+                        {"path": "../../outside.txt", "sha256": hashlib.sha256(outside.read_bytes()).hexdigest()},
+                        {"path": "reports/D-001-report.md", "sha256": "0" * 64},
+                    ],
                 },
             )
             wait_for_event(audit, "production_event_observed", production_event_seq=1)
+            original = production.read_text(encoding="utf-8")
+            production.write_text(original.replace('"event_seq": 1', '"event_seq": 2'), encoding="utf-8")
+            wait_for_event(audit, "production_stream_mutation_observed", mutation="rewritten")
             summary = finalize_observer(process, audit, stop)
         finally:
-            stop_observer_after_failure(process, audit, stop)
-
+            stop_after_failure(process, audit, stop)
+        stream = summary["production_cross_checks"]["files"]["EVENTS.jsonl"]
+        assert stream["append_only_valid"] is False
+        assert stream["references_valid"] is False
+        errors = "\n".join(stream["errors"])
+        assert "path_outside_or_not_file" in errors
+        assert "sha256_mismatch" in errors
         lifecycle = summary["lifecycle"]["D-001"]
         assert lifecycle["sampling_event_seq"] is None
         assert lifecycle["verified_event_seq"] is None
         assert lifecycle["strictly_ordered"] is False
-        stream = summary["production_cross_checks"]["files"]["EVENTS.jsonl"]
-        assert stream["valid"] is False
-        joined_errors = "\n".join(stream["errors"])
-        assert "missing_or_invalid_timestamp" in joined_errors
-        assert "required_references_empty" in joined_errors
-        assert "non_monotonic_event_seq" in joined_errors
-        assert "hash_or_revision_missing" in joined_errors
         assert report.is_file()
 
 
 def test_valid_production_only_claims_cannot_pass() -> None:
-    with tempfile.TemporaryDirectory(prefix="discovery-audit-valid-production-only-") as raw:
+    with tempfile.TemporaryDirectory(prefix="discovery-audit-valid-production-") as raw:
         repo = Path(raw).resolve()
         initialize_repo(repo)
-        output = repo / "eval" / "outputs"
-        audit = repo / "eval" / "runner-audit"
+        output, audit = repo / "eval" / "outputs", repo / "eval" / "runner-audit"
         process, stop, _control = start_observer(repo, output, audit)
         try:
-            report, evidence = write_lifecycle_outputs(output, audit)
+            report, evidence = write_canonical_lifecycle(output, audit)
             production = output / "EVENTS.jsonl"
             append_jsonl(
                 production,
                 {
-                    "event_seq": 1,
-                    "timestamp": "2026-01-01T00:00:00Z",
-                    "event_type": "artifact_sampled",
-                    "packet_id": "D-001",
-                    "references": [
-                        {
-                            "path": report.relative_to(output).as_posix(),
-                            "sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
-                        }
-                    ],
+                    "event_seq": 1, "timestamp": "2026-01-01T00:00:00Z",
+                    "event_type": "artifact_sampled", "packet_id": "D-001",
+                    "references": [{
+                        "path": "reports/D-001-report.md",
+                        "sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
+                    }],
                 },
             )
             append_jsonl(
                 production,
                 {
-                    "event_seq": 2,
-                    "timestamp": "2026-01-01T00:00:01Z",
-                    "event_type": "packet_verified",
-                    "packet_id": "D-001",
-                    "references": [
-                        {
-                            "path": evidence.relative_to(output).as_posix(),
-                            "sha256": hashlib.sha256(evidence.read_bytes()).hexdigest(),
-                        }
-                    ],
+                    "event_seq": 2, "timestamp": "2026-01-01T00:00:01Z",
+                    "event_type": "packet_verified", "packet_id": "D-001",
+                    "references": [{
+                        "path": "evidence/D-001/result.txt",
+                        "sha256": hashlib.sha256(evidence.read_bytes()).hexdigest(),
+                    }],
                 },
             )
             wait_for_event(audit, "production_event_observed", production_event_seq=2)
             summary = finalize_observer(process, audit, stop)
         finally:
-            stop_observer_after_failure(process, audit, stop)
-
+            stop_after_failure(process, audit, stop)
         assert summary["production_cross_checks"]["files"]["EVENTS.jsonl"]["valid"] is True
         lifecycle = summary["lifecycle"]["D-001"]
         assert lifecycle["sampling_event_seq"] is None
@@ -300,149 +498,21 @@ def test_valid_production_only_claims_cannot_pass() -> None:
         assert lifecycle["strictly_ordered"] is False
 
 
-def test_sample_without_verification_stays_false() -> None:
-    with tempfile.TemporaryDirectory(prefix="discovery-audit-sample-only-") as raw:
-        repo = Path(raw).resolve()
-        initialize_repo(repo)
-        output = repo / "eval" / "outputs"
-        audit = repo / "eval" / "runner-audit"
-        process, stop, control = start_observer(repo, output, audit)
-        try:
-            write_lifecycle_outputs(output, audit)
-            append_jsonl(
-                control,
-                {
-                    "request_id": "sample-D-001",
-                    "action": "sample",
-                    "packet_id": "D-001",
-                    "paths": ["reports/D-001-report.md", "evidence/D-001/result.txt"],
-                },
-            )
-            wait_for_event(audit, "runner_sample_completed", request_id="sample-D-001")
-            summary = finalize_observer(process, audit, stop)
-        finally:
-            stop_observer_after_failure(process, audit, stop)
-        lifecycle = summary["lifecycle"]["D-001"]
-        assert lifecycle["sampling_event_seq"] is not None
-        assert lifecycle["verified_event_seq"] is None
-        assert lifecycle["strictly_ordered"] is False
-
-
-def test_runner_control_produces_strict_order() -> None:
-    with tempfile.TemporaryDirectory(prefix="discovery-audit-valid-control-") as raw:
-        repo = Path(raw).resolve()
-        initialize_repo(repo)
-        output = repo / "eval" / "outputs"
-        audit = repo / "eval" / "runner-audit"
-        assert_invalid_location_rejected(repo, output)
-        process, stop, control = start_observer(repo, output, audit)
-        try:
-            report, evidence = write_lifecycle_outputs(output, audit)
-            production = output / "EVENTS.jsonl"
-            append_jsonl(
-                production,
-                {
-                    "event_seq": 1,
-                    "timestamp": "2026-01-01T00:00:00Z",
-                    "event_type": "artifact_sampled",
-                    "packet_id": "D-001",
-                    "references": [
-                        {
-                            "path": report.relative_to(output).as_posix(),
-                            "sha256": hashlib.sha256(report.read_bytes()).hexdigest(),
-                        }
-                    ],
-                },
-            )
-            append_jsonl(
-                production,
-                {
-                    "event_seq": 2,
-                    "timestamp": "2026-01-01T00:00:01Z",
-                    "event_type": "packet_verified",
-                    "packet_id": "D-001",
-                    "references": [
-                        {
-                            "path": evidence.relative_to(output).as_posix(),
-                            "sha256": hashlib.sha256(evidence.read_bytes()).hexdigest(),
-                        }
-                    ],
-                },
-            )
-            wait_for_event(audit, "production_event_observed", production_event_seq=2)
-
-            append_jsonl(
-                control,
-                {
-                    "request_id": "verify-too-early",
-                    "action": "verify",
-                    "packet_id": "D-001",
-                    "sample_request_id": "not-yet-sampled",
-                },
-            )
-            wait_for_event(audit, "runner_control_rejected", request_id="verify-too-early")
-            append_jsonl(
-                control,
-                {
-                    "request_id": "sample-D-001",
-                    "action": "sample",
-                    "packet_id": "D-001",
-                    "paths": ["reports/D-001-report.md", "evidence/D-001/result.txt"],
-                },
-            )
-            wait_for_event(audit, "runner_sample_completed", request_id="sample-D-001")
-            append_jsonl(
-                control,
-                {
-                    "request_id": "verify-D-001",
-                    "action": "verify",
-                    "packet_id": "D-001",
-                    "sample_request_id": "sample-D-001",
-                },
-            )
-            wait_for_event(audit, "runner_verification_accepted", request_id="verify-D-001")
-            summary = finalize_observer(process, audit, stop)
-        finally:
-            stop_observer_after_failure(process, audit, stop)
-
-        assert summary["schema"] == "runner-audit-v1"
-        assert summary["assigned_output_root"] == str(output)
-        assert summary["runner_audit_root"] == str(audit)
-        assert summary["tracked_head_unchanged"] is True
-        assert summary["tracked_status_unchanged"] is True
-        assert summary["new_nonignored_untracked_outside_output"] == []
-        lifecycle = summary["lifecycle"]["D-001"]
-        assert lifecycle["strictly_ordered"] is True
-        assert lifecycle["containment_before_sampling"] is True
-        assert summary["production_cross_checks"]["files"]["EVENTS.jsonl"]["valid"] is True
-        assert summary["observation_scope"]["unaudited"]
-        assert "Only observed scopes" in summary["observation_scope"]["clean_claim_boundary"]
-
-        events = read_events(audit)
-        report_event = next(item for item in events if item.get("path") == "reports/D-001-report.md")
-        preflight_event = next(
-            item for item in events if item.get("path", "").endswith("path-containment-preflight.md")
-        )
-        sample_event = next(
-            item
-            for item in events
-            if item.get("event_type") == "runner_artifact_sampled"
-            and item.get("path") == "reports/D-001-report.md"
-        )
-        assert preflight_event["role"] == "orchestrator_preflight_evidence"
-        assert report_event["sha256"] == hashlib.sha256(report.read_bytes()).hexdigest()
-        assert sample_event["sha256"] == report_event["sha256"]
-        summary_path = audit / "summary.json"
-        assert events[-1]["summary_sha256"] == hashlib.sha256(summary_path.read_bytes()).hexdigest()
-
-
 def main() -> None:
     assert OBSERVER.is_file(), f"observer missing: {OBSERVER}"
-    test_gate_roles_are_neutral()
-    test_production_only_invalid_claims_cannot_pass()
-    test_valid_production_only_claims_cannot_pass()
-    test_sample_without_verification_stays_false()
-    test_runner_control_produces_strict_order()
+    os.environ[SECRET_ENV] = secrets.token_hex(32)
+    try:
+        test_gate_roles_are_neutral()
+        test_invalid_root_relationships_are_rejected()
+        test_positive_strict_order_and_outside_reporting()
+        test_first_seen_verified_and_empty_noncanonical_artifacts_reject()
+        test_verified_packet_row_change_rejects()
+        test_forged_and_replayed_controls_reject()
+        test_rewritten_and_truncated_controls_invalidate()
+        test_production_claims_rewrite_and_reference_escape_remain_cross_checks()
+        test_valid_production_only_claims_cannot_pass()
+    finally:
+        os.environ.pop(SECRET_ENV, None)
     print("runner audit smoke test: PASS")
 
 

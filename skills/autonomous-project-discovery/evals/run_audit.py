@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
+import os
 import re
 import subprocess
 import time
@@ -16,6 +18,8 @@ from typing import Any
 
 PACKET_RE = re.compile(r"(?:^|[^A-Z0-9])(D-\d{3})(?:[^A-Z0-9]|$)", re.I)
 PACKET_ID_RE = re.compile(r"D-\d{3}", re.I)
+CONTROL_SECRET_ENV = "DISCOVERY_RUNNER_AUDIT_HMAC_KEY"
+ACTIVE_PACKET_STATUSES = {"pending", "in_progress", "blocked"}
 
 
 def utc_now() -> str:
@@ -130,6 +134,43 @@ def parse_timestamp(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def parse_packet_table(path: Path) -> dict[str, dict[str, str]]:
+    """Read the canonical Packets markdown table from root AGENT-STATE.md."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+    in_packets = False
+    header: list[str] | None = None
+    result: dict[str, dict[str, str]] = {}
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower() == "## packets":
+            in_packets = True
+            continue
+        if in_packets and stripped.startswith("## "):
+            break
+        if not in_packets or not stripped.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if header is None:
+            lowered = [cell.lower() for cell in cells]
+            if "packet" in lowered and "status" in lowered:
+                header = lowered
+            continue
+        if all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
+            continue
+        if len(cells) != len(header):
+            continue
+        packet = cells[header.index("packet")].upper()
+        status = cells[header.index("status")].lower()
+        if PACKET_ID_RE.fullmatch(packet):
+            canonical_row = json.dumps(cells, ensure_ascii=False, separators=(",", ":"))
+            result[packet] = {
+                "status": status,
+                "row_sha256": hashlib.sha256(canonical_row.encode("utf-8")).hexdigest(),
+            }
+    return result
+
+
 class Audit:
     def __init__(
         self,
@@ -138,6 +179,7 @@ class Audit:
         audit_dir: Path,
         stop_file: Path,
         control_file: Path,
+        control_secret: bytes,
         poll_ms: int,
     ):
         self.repo = repo.resolve()
@@ -145,6 +187,7 @@ class Audit:
         self.audit_dir = audit_dir.resolve()
         self.stop_file = stop_file.resolve()
         self.control_file = control_file.resolve()
+        self.control_secret = control_secret
         self.poll_seconds = poll_ms / 1000
         self.events_path = self.audit_dir / "runner-audit.jsonl"
         self.summary_path = self.audit_dir / "summary.json"
@@ -155,8 +198,16 @@ class Audit:
         self.production_streams: dict[str, dict[str, Any]] = {}
         self.production_claims: list[dict[str, Any]] = []
         self.control_lines_seen = 0
+        self.control_line_hashes: list[str] = []
+        self.control_append_only_valid = True
+        self.control_authentication_valid = True
+        self.control_last_seq = 0
+        self.control_last_hmac: str | None = None
         self.control_request_ids: set[str] = set()
         self.samples: dict[str, dict[str, Any]] = {}
+        self.packet_rows: dict[str, dict[str, str]] = {}
+        self.state_transitions: dict[str, list[dict[str, Any]]] = {}
+        self.state_epoch = 0
         self.initial_git = git_snapshot(self.repo)
 
     def emit(self, event_type: str, **fields: Any) -> None:
@@ -202,7 +253,67 @@ class Audit:
                     role=classify_file(relative),
                     packet_id=packet_from(relative),
                 )
+                if relative == "AGENT-STATE.md":
+                    self.state_epoch += 1
+                    self.packet_rows = {}
+                    self.emit("runner_state_history_reset", reason="canonical_state_deleted", state_epoch=self.state_epoch)
+        self.observe_canonical_state(current)
         self.files = current
+
+    def observe_canonical_state(self, current: dict[str, dict[str, Any]]) -> None:
+        metadata = current.get("AGENT-STATE.md")
+        previous = self.files.get("AGENT-STATE.md")
+        if metadata is None or (previous is not None and previous["sha256"] == metadata["sha256"]):
+            return
+        state_path = self.output / "AGENT-STATE.md"
+        rows = parse_packet_table(state_path)
+        for packet_id, row in sorted(rows.items()):
+            status = row["status"]
+            prior_row = self.packet_rows.get(packet_id)
+            prior = prior_row["status"] if prior_row else None
+            if prior is None:
+                self.emit(
+                    "runner_packet_state_observed",
+                    packet_id=packet_id,
+                    status=status,
+                    packet_row_sha256=row["row_sha256"],
+                    state_path="AGENT-STATE.md",
+                    state_sha256=metadata["sha256"],
+                    state_epoch=self.state_epoch,
+                )
+            elif prior != status:
+                self.emit(
+                    "runner_packet_state_transition_observed",
+                    packet_id=packet_id,
+                    from_status=prior,
+                    to_status=status,
+                    packet_row_sha256=row["row_sha256"],
+                    state_path="AGENT-STATE.md",
+                    state_sha256=metadata["sha256"],
+                    state_epoch=self.state_epoch,
+                )
+                self.state_transitions.setdefault(packet_id, []).append(self.events[-1])
+            elif prior_row["row_sha256"] != row["row_sha256"]:
+                self.emit(
+                    "runner_packet_state_row_updated",
+                    packet_id=packet_id,
+                    status=status,
+                    prior_packet_row_sha256=prior_row["row_sha256"],
+                    packet_row_sha256=row["row_sha256"],
+                    state_path="AGENT-STATE.md",
+                    state_sha256=metadata["sha256"],
+                    state_epoch=self.state_epoch,
+                )
+            self.packet_rows[packet_id] = row
+        for packet_id in set(self.packet_rows) - set(rows):
+            self.emit(
+                "runner_packet_state_disappeared",
+                packet_id=packet_id,
+                prior_status=self.packet_rows[packet_id]["status"],
+                state_sha256=metadata["sha256"],
+                state_epoch=self.state_epoch,
+            )
+            del self.packet_rows[packet_id]
 
     def observe_production_events(self) -> None:
         for path in sorted(self.output.rglob("EVENTS.jsonl")) if self.output.exists() else []:
@@ -413,6 +524,28 @@ class Audit:
         lines = raw_text.splitlines()
         if raw_text and not raw_text.endswith(("\n", "\r")):
             lines = lines[:-1]
+        current_hashes = [hashlib.sha256(line.encode("utf-8")).hexdigest() for line in lines]
+        prefix_length = min(self.control_lines_seen, len(lines))
+        prefix_changed = current_hashes[:prefix_length] != self.control_line_hashes[:prefix_length]
+        truncated = len(lines) < self.control_lines_seen
+        if (prefix_changed or truncated) and self.control_append_only_valid:
+            self.control_append_only_valid = False
+            self.emit(
+                "runner_control_stream_mutation_observed",
+                mutation="truncated" if truncated else "rewritten",
+                previously_observed_lines=self.control_lines_seen,
+                current_complete_lines=len(lines),
+            )
+            self.emit(
+                "runner_control_rejected",
+                request_event_seq=self.events[-1]["event_seq"],
+                request_id=None,
+                action="control_stream",
+                packet_id=None,
+                validation_errors=["control_stream_truncated" if truncated else "control_stream_rewritten"],
+            )
+        if not self.control_append_only_valid:
+            return
         for line_number, raw in enumerate(lines[self.control_lines_seen :], start=self.control_lines_seen + 1):
             line_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
             try:
@@ -424,11 +557,28 @@ class Audit:
                     line_sha256=line_hash,
                     error=str(error),
                 )
+                self.control_authentication_valid = False
+                continue
+            if not isinstance(command, dict):
+                self.control_authentication_valid = False
+                observed = self.emit_control_observed(line_number, line_hash, None, None, None, None)
+                self.reject_control(observed, None, None, None, ["request_not_object"])
                 continue
             request_id = command.get("request_id") if isinstance(command, dict) else None
             action = command.get("action") if isinstance(command, dict) else None
             packet_id = command.get("packet_id") if isinstance(command, dict) else None
-            observed = self.emit_control_observed(line_number, line_hash, request_id, action, packet_id)
+            control_seq = command.get("control_seq")
+            observed = self.emit_control_observed(
+                line_number, line_hash, request_id, action, packet_id, control_seq
+            )
+            authentication_errors = self.authenticate_control(command)
+            if authentication_errors:
+                self.control_authentication_valid = False
+                self.reject_control(observed, request_id, action, packet_id, authentication_errors)
+                continue
+            provided_hmac = command["hmac"].lower()
+            self.control_last_seq = control_seq
+            self.control_last_hmac = provided_hmac
             if not isinstance(request_id, str) or not request_id.strip():
                 self.reject_control(observed, request_id, action, packet_id, ["request_id_missing"])
                 continue
@@ -447,6 +597,30 @@ class Audit:
             else:
                 self.reject_control(observed, request_id, action, packet_id, ["action_invalid"])
         self.control_lines_seen = len(lines)
+        self.control_line_hashes = current_hashes
+
+    def authenticate_control(self, command: dict[str, Any]) -> list[str]:
+        errors: list[str] = []
+        provided = command.get("hmac")
+        control_seq = command.get("control_seq")
+        previous_hmac = command.get("previous_hmac")
+        if not isinstance(control_seq, int) or isinstance(control_seq, bool):
+            errors.append("control_seq_invalid")
+        elif control_seq != self.control_last_seq + 1:
+            errors.append("control_seq_replayed_or_out_of_order")
+        if previous_hmac != self.control_last_hmac:
+            errors.append("previous_hmac_chain_mismatch")
+        if not isinstance(provided, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", provided):
+            errors.append("hmac_missing_or_invalid")
+            return errors
+        unsigned = {key: value for key, value in command.items() if key != "hmac"}
+        canonical = json.dumps(
+            unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        expected = hmac.new(self.control_secret, canonical, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(provided.lower(), expected):
+            errors.append("hmac_authentication_failed")
+        return errors
 
     def emit_control_observed(
         self,
@@ -455,6 +629,7 @@ class Audit:
         request_id: Any,
         action: Any,
         packet_id: Any,
+        control_seq: Any,
     ) -> dict[str, Any]:
         self.emit(
             "runner_control_request_observed",
@@ -463,6 +638,7 @@ class Audit:
             request_id=request_id,
             action=action,
             packet_id=packet_id,
+            control_seq=control_seq,
         )
         return self.events[-1]
 
@@ -490,59 +666,24 @@ class Audit:
         packet_id: str,
         paths: Any,
     ) -> None:
-        errors: list[str] = []
-        if not isinstance(paths, list) or not paths:
-            self.reject_control(observed, request_id, "sample", packet_id, ["paths_empty_or_invalid"])
+        sampled_items, transition, errors = self.collect_canonical_packet_artifacts(
+            packet_id, observed["event_seq"]
+        )
+        if paths is not None:
+            supplied = paths if isinstance(paths, list) else []
+            canonical_paths = [item["path"] for item in sampled_items]
+            if supplied != canonical_paths:
+                errors.append("paths_not_exact_canonical_manifest")
+        if errors:
+            self.reject_control(observed, request_id, "sample", packet_id, errors)
             return
-        if len(set(value for value in paths if isinstance(value, str))) != len(paths):
-            errors.append("paths_duplicate_or_invalid")
-        sampled_items: list[dict[str, Any]] = []
-        for index, raw_path in enumerate(paths):
-            prefix = f"path_{index}"
-            if not isinstance(raw_path, str) or not raw_path.strip() or Path(raw_path).is_absolute():
-                errors.append(f"{prefix}_invalid")
-                continue
-            try:
-                candidate = (self.output / raw_path).resolve(strict=True)
-            except (OSError, RuntimeError):
-                errors.append(f"{prefix}_missing")
-                continue
-            if not is_relative_to(candidate, self.output) or not candidate.is_file():
-                errors.append(f"{prefix}_outside_or_not_file")
-                continue
-            relative = candidate.relative_to(self.output).as_posix()
-            observed_hash = sha256(candidate)
-            matching_writes = [
-                event
-                for event in self.events
-                if event.get("path") == relative
-                and event.get("sha256") == observed_hash
-                and event.get("event_type") in {"output_file_created", "output_file_modified"}
-                and event["event_seq"] < observed["event_seq"]
-            ]
-            if not matching_writes:
-                errors.append(f"{prefix}_write_not_observed")
-                continue
-            write_event = matching_writes[-1]
-            role = classify_file(relative)
-            item = {
-                "path": relative,
-                "sha256": observed_hash,
-                "size": candidate.stat().st_size,
-                "role": role,
-                "packet_id": packet_from(relative),
-                "observed_write_event_seq": write_event["event_seq"],
-            }
-            sampled_items.append(item)
+        for item in sampled_items:
             self.emit(
                 "runner_artifact_sampled",
                 request_id=request_id,
                 request_event_seq=observed["event_seq"],
                 **item,
             )
-        if errors:
-            self.reject_control(observed, request_id, "sample", packet_id, errors)
-            return
         manifest_hash = hashlib.sha256(
             json.dumps(sampled_items, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
@@ -553,8 +694,112 @@ class Audit:
             packet_id=packet_id,
             sampled_paths=sampled_items,
             manifest_sha256=manifest_hash,
+            state_transition_event_seq=transition["event_seq"],
+            state_sha256=next(
+                item["sha256"] for item in sampled_items if item["path"] == "AGENT-STATE.md"
+            ),
+            packet_row_sha256=transition["packet_row_sha256"],
         )
         self.samples[request_id] = self.events[-1]
+
+    def collect_canonical_packet_artifacts(
+        self, packet_id: str, before_event_seq: int
+    ) -> tuple[list[dict[str, Any]], dict[str, Any] | None, list[str]]:
+        errors: list[str] = []
+        state_path = self.output / "AGENT-STATE.md"
+        report_path = self.output / "reports" / f"{packet_id}-report.md"
+        packet_evidence_root = self.output / "evidence" / packet_id
+        containment_path = packet_evidence_root / "path-containment-postwrite.md"
+        worker_evidence = []
+        if packet_evidence_root.exists():
+            worker_evidence = sorted(
+                path
+                for path in packet_evidence_root.rglob("*")
+                if path.is_file()
+                and path.name not in {
+                    "preflight.md",
+                    "path-containment-preflight.md",
+                    "path-containment-postwrite.md",
+                }
+            )
+        candidates = [state_path, report_path, *worker_evidence, containment_path]
+        if not worker_evidence:
+            errors.append("canonical_worker_evidence_missing")
+        items: list[dict[str, Any]] = []
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve(strict=True)
+            except (OSError, RuntimeError):
+                errors.append(f"canonical_artifact_missing:{candidate.relative_to(self.output).as_posix()}")
+                continue
+            if not is_relative_to(resolved, self.output) or not resolved.is_file():
+                errors.append(f"canonical_artifact_outside_or_not_file:{candidate.name}")
+                continue
+            relative = resolved.relative_to(self.output).as_posix()
+            size = resolved.stat().st_size
+            if size == 0:
+                errors.append(f"canonical_artifact_empty:{relative}")
+                continue
+            observed_hash = sha256(resolved)
+            writes = [
+                event
+                for event in self.events
+                if event.get("path") == relative
+                and event.get("sha256") == observed_hash
+                and event.get("event_type") in {"output_file_created", "output_file_modified"}
+                and event["event_seq"] < before_event_seq
+            ]
+            if not writes:
+                errors.append(f"canonical_artifact_write_not_observed:{relative}")
+                continue
+            items.append(
+                {
+                    "path": relative,
+                    "sha256": observed_hash,
+                    "size": size,
+                    "role": classify_file(relative),
+                    "packet_id": packet_id,
+                    "observed_write_event_seq": writes[-1]["event_seq"],
+                }
+            )
+        expected_report = f"reports/{packet_id}-report.md"
+        expected_containment = f"evidence/{packet_id}/path-containment-postwrite.md"
+        if not any(
+            item["path"] == expected_report and item["role"] == "worker_report" for item in items
+        ):
+            errors.append("canonical_worker_report_invalid")
+        if not any(item["role"] == "worker_evidence" for item in items):
+            errors.append("canonical_worker_evidence_invalid")
+        if not any(
+            item["path"] == expected_containment
+            and item["role"] == "orchestrator_postwrite_containment"
+            for item in items
+        ):
+            errors.append("canonical_postwrite_containment_invalid")
+        transitions = [
+            event
+            for event in self.state_transitions.get(packet_id, [])
+            if event.get("from_status") in ACTIVE_PACKET_STATUSES
+            and event.get("to_status") == "verified"
+            and event.get("state_epoch") == self.state_epoch
+            and event["event_seq"] < before_event_seq
+        ]
+        transition = transitions[-1] if transitions else None
+        if transition is None:
+            errors.append("active_to_verified_state_transition_not_observed")
+        current_row = self.packet_rows.get(packet_id)
+        if transition is not None and (current_row is None or current_row["status"] != "verified"):
+            errors.append("current_packet_status_not_verified")
+        elif transition is not None and items:
+            state_item = next((item for item in items if item["path"] == "AGENT-STATE.md"), None)
+            if state_item is None:
+                errors.append("canonical_state_artifact_invalid")
+            if current_row is None or current_row["row_sha256"] != transition["packet_row_sha256"]:
+                errors.append("verified_packet_row_changed_after_transition")
+            artifact_items = [item for item in items if item["path"] != "AGENT-STATE.md"]
+            if any(item["observed_write_event_seq"] >= transition["event_seq"] for item in artifact_items):
+                errors.append("canonical_artifacts_not_observed_before_state_transition")
+        return items, transition, errors
 
     def handle_verify(
         self,
@@ -569,41 +814,37 @@ class Audit:
             sample = None
         else:
             sample = self.samples[sample_request_id]
-        report_item = None
-        evidence_item = None
         if sample is not None:
             if sample.get("packet_id") != packet_id:
                 errors.append("sample_packet_mismatch")
-            packet_items = [item for item in sample["sampled_paths"] if item.get("packet_id") == packet_id]
-            report_item = next((item for item in packet_items if item.get("role") == "worker_report"), None)
-            evidence_item = next((item for item in packet_items if item.get("role") == "worker_evidence"), None)
-            if report_item is None:
-                errors.append("sampled_worker_report_missing")
-            if evidence_item is None:
-                errors.append("sampled_worker_evidence_missing")
-            if report_item is not None and evidence_item is not None and not (
-                report_item["observed_write_event_seq"]
-                < evidence_item["observed_write_event_seq"]
-                < sample["event_seq"]
-                < observed["event_seq"]
-            ):
-                errors.append("report_evidence_sample_verify_order_invalid")
+            current_items, transition, current_errors = self.collect_canonical_packet_artifacts(
+                packet_id, observed["event_seq"]
+            )
+            errors.extend(current_errors)
+            current_manifest = hashlib.sha256(
+                json.dumps(current_items, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            ).hexdigest()
+            if current_manifest != sample.get("manifest_sha256"):
+                errors.append("canonical_manifest_changed_after_sample")
+            if transition is None or transition["event_seq"] != sample.get("state_transition_event_seq"):
+                errors.append("sample_not_bound_to_current_state_transition")
+            if not (sample["event_seq"] < observed["event_seq"]):
+                errors.append("sample_verify_order_invalid")
         if errors:
             self.reject_control(observed, request_id, "verify", packet_id, errors)
             return
         self.emit(
-            "runner_verification_accepted",
+            "runner_verification_observed",
             request_id=request_id,
             request_event_seq=observed["event_seq"],
             packet_id=packet_id,
             sample_request_id=sample_request_id,
             sample_event_seq=sample["event_seq"],
-            report_path=report_item["path"],
-            report_sha256=report_item["sha256"],
-            report_write_event_seq=report_item["observed_write_event_seq"],
-            evidence_path=evidence_item["path"],
-            evidence_sha256=evidence_item["sha256"],
-            evidence_write_event_seq=evidence_item["observed_write_event_seq"],
+            state_transition_event_seq=sample["state_transition_event_seq"],
+            state_sha256=sample["state_sha256"],
+            packet_row_sha256=sample["packet_row_sha256"],
+            canonical_manifest_sha256=sample["manifest_sha256"],
+            canonical_paths=sample["sampled_paths"],
         )
 
     def production_cross_check_summary(self) -> dict[str, Any]:
@@ -630,21 +871,93 @@ class Audit:
         result: dict[str, Any] = {}
         packet_ids = sorted({event.get("packet_id") for event in self.events if event.get("packet_id")})
         for packet_id in packet_ids:
-            report = next((e for e in self.events if e.get("packet_id") == packet_id and e.get("role") == "worker_report" and e["event_type"] == "output_file_created"), None)
-            evidence = next((e for e in self.events if e.get("packet_id") == packet_id and e.get("role") == "worker_evidence" and e["event_type"] == "output_file_created"), None)
-            sampled = next((e for e in self.events if e.get("packet_id") == packet_id and e["event_type"] == "runner_sample_completed"), None)
-            verified = next((e for e in self.events if e.get("packet_id") == packet_id and e["event_type"] == "runner_verification_accepted"), None)
-            containment = next((e for e in self.events if e.get("packet_id") == packet_id and e.get("role") == "orchestrator_postwrite_containment" and e["event_type"] == "output_file_created"), None)
-            ordered = bool(report and evidence and sampled and verified and report["event_seq"] < evidence["event_seq"] < sampled["event_seq"] < verified["event_seq"])
+            verified = next((e for e in self.events if e.get("packet_id") == packet_id and e["event_type"] == "runner_verification_observed"), None)
+            sampled = next(
+                (
+                    e
+                    for e in self.events
+                    if verified
+                    and e.get("packet_id") == packet_id
+                    and e["event_type"] == "runner_sample_completed"
+                    and e["event_seq"] == verified.get("sample_event_seq")
+                ),
+                None,
+            )
+            if verified is None:
+                sampled = next(
+                    (
+                        e
+                        for e in self.events
+                        if e.get("packet_id") == packet_id
+                        and e["event_type"] == "runner_sample_completed"
+                    ),
+                    None,
+                )
+            transition = None
+            report_item = None
+            evidence_items: list[dict[str, Any]] = []
+            containment_item = None
+            if sampled:
+                transition = next(
+                    (
+                        e
+                        for e in self.events
+                        if e["event_seq"] == sampled.get("state_transition_event_seq")
+                        and e.get("event_type") == "runner_packet_state_transition_observed"
+                    ),
+                    None,
+                )
+                report_item = next(
+                    (item for item in sampled["sampled_paths"] if item["role"] == "worker_report"),
+                    None,
+                )
+                evidence_items = [
+                    item for item in sampled["sampled_paths"] if item["role"] == "worker_evidence"
+                ]
+                containment_item = next(
+                    (
+                        item
+                        for item in sampled["sampled_paths"]
+                        if item["role"] == "orchestrator_postwrite_containment"
+                    ),
+                    None,
+                )
+            artifacts_before_transition = bool(
+                transition
+                and report_item
+                and evidence_items
+                and containment_item
+                and all(
+                    item["observed_write_event_seq"] < transition["event_seq"]
+                    for item in [report_item, *evidence_items, containment_item]
+                )
+            )
+            ordered = bool(
+                artifacts_before_transition
+                and sampled
+                and verified
+                and transition["event_seq"] < sampled["event_seq"] < verified["event_seq"]
+                and self.control_append_only_valid
+                and self.control_authentication_valid
+            )
             result[packet_id] = {
-                "report_write_event_seq": report["event_seq"] if report else None,
-                "evidence_write_event_seq": evidence["event_seq"] if evidence else None,
-                "postwrite_containment_event_seq": containment["event_seq"] if containment else None,
-                "containment_before_sampling": bool(containment and sampled and containment["event_seq"] < sampled["event_seq"]),
+                "report_write_event_seq": report_item["observed_write_event_seq"] if report_item else None,
+                "evidence_write_event_seq": min(
+                    (item["observed_write_event_seq"] for item in evidence_items), default=None
+                ),
+                "postwrite_containment_event_seq": (
+                    containment_item["observed_write_event_seq"] if containment_item else None
+                ),
+                "active_to_verified_transition_event_seq": transition["event_seq"] if transition else None,
+                "containment_before_sampling": bool(
+                    containment_item
+                    and sampled
+                    and containment_item["observed_write_event_seq"] < sampled["event_seq"]
+                ),
                 "sampling_event_seq": sampled["event_seq"] if sampled else None,
                 "verified_event_seq": verified["event_seq"] if verified else None,
                 "strictly_ordered": ordered,
-                "note": "Strict order uses runner-observed report/evidence writes plus runner-owned sampling and verification control requests; production EVENTS claims are cross-checks only.",
+                "note": "Strict order requires observer-hashed canonical artifacts, an earlier active-to-verified AGENT-STATE transition bound to the exact state hash, authenticated sampling, and an independent verification re-sample. Production EVENTS claims are cross-checks only.",
             }
         return result
 
@@ -658,7 +971,12 @@ class Audit:
 
         def runner_owned(relative: str) -> bool:
             absolute = (self.repo / relative).resolve()
-            return is_relative_to(absolute, self.audit_dir) or absolute == self.stop_file
+            return absolute in {
+                self.events_path,
+                self.summary_path,
+                self.control_file,
+                self.stop_file,
+            }
 
         new_untracked = sorted(final_untracked - initial_untracked)
         new_untracked_outside_output = [
@@ -673,7 +991,7 @@ class Audit:
             if Path(relative).suffix.lower() in code_suffixes and "/evidence/" not in f"/{relative.lower()}" and "/prototypes/" not in f"/{relative.lower()}"
         )
         summary = {
-            "schema": "runner-audit-v1",
+            "schema": "runner-audit-v2",
             "created_at": utc_now(),
             "repo_root": str(self.repo),
             "assigned_output_root": str(self.output),
@@ -687,13 +1005,20 @@ class Audit:
             "production_code_candidates_under_output": production_code_candidates,
             "lifecycle": self.lifecycle_summary(),
             "production_cross_checks": self.production_cross_check_summary(),
+            "runner_control_integrity": {
+                "authenticated_hmac_chain_valid": self.control_authentication_valid,
+                "append_only_valid": self.control_append_only_valid,
+                "accepted_control_count": self.control_last_seq,
+                "secret_environment_variable": CONTROL_SECRET_ENV,
+                "secret_persisted": False,
+            },
             "observation_scope": {
                 "observed": [
                     "assigned output-root file creation/modification/deletion with SHA-256 and mtime",
                     "repository tracked HEAD and tracked status at runner start/end",
                     "repository nonignored untracked path set at runner start/end",
                     "production EVENTS.jsonl append lines as cross-check claims",
-                    "runner control requests and observer-owned reads/hashes of explicitly sampled output paths",
+                    "HMAC-authenticated runner control requests and observer-owned canonical artifact reads/hashes",
                 ],
                 "unaudited": [
                     "network and remote service side effects",
@@ -718,6 +1043,7 @@ class Audit:
             repo_root=str(self.repo),
             assigned_output_root=str(self.output),
             runner_control_file=str(self.control_file),
+            runner_control_authentication="HMAC-SHA256 chained requests",
             initial_git_head=self.initial_git["head"],
             initial_tracked_status=self.initial_git["tracked_status"]["stdout_lines"],
         )
@@ -748,17 +1074,34 @@ def main() -> None:
     audit_dir = args.audit_dir.resolve()
     stop_file = args.stop_file.resolve()
     control_file = (args.control_file or (audit_dir / "runner-control.jsonl")).resolve()
+    secret_value = os.environ.get(CONTROL_SECRET_ENV)
+    if secret_value is None or len(secret_value.encode("utf-8")) < 32:
+        raise SystemExit(f"{CONTROL_SECRET_ENV} must contain at least 32 UTF-8 bytes")
     if not is_relative_to(output, repo):
         raise SystemExit("output root must be inside repository/worktree")
-    if not is_relative_to(audit_dir, repo) or is_relative_to(audit_dir, output):
-        raise SystemExit("audit dir must be inside repository/worktree but outside assigned output root")
+    if not is_relative_to(audit_dir, repo):
+        raise SystemExit("audit dir must be inside repository/worktree")
+    if (
+        is_relative_to(audit_dir, output)
+        or is_relative_to(output, audit_dir)
+        or audit_dir.parent != output.parent
+    ):
+        raise SystemExit("audit dir and output root must be physically disjoint siblings")
     if stop_file.parent != audit_dir:
         raise SystemExit("stop file must be directly inside audit dir")
     if control_file.parent != audit_dir or control_file == stop_file:
         raise SystemExit("control file must be distinct and directly inside audit dir")
     if args.poll_ms < 20:
         raise SystemExit("poll interval must be at least 20 ms")
-    Audit(repo, output, audit_dir, stop_file, control_file, args.poll_ms).run()
+    Audit(
+        repo,
+        output,
+        audit_dir,
+        stop_file,
+        control_file,
+        secret_value.encode("utf-8"),
+        args.poll_ms,
+    ).run()
 
 
 if __name__ == "__main__":
