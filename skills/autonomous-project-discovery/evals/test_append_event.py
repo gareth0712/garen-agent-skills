@@ -25,6 +25,8 @@ import append_event as append_module  # noqa: E402
 
 
 PLATFORM_NOTES: list[str] = []
+GENESIS_EVENT_SHA256 = "0" * 64
+EMPTY_EVENTS_SHA256 = hashlib.sha256(b"").hexdigest()
 
 
 def run_cli(run_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -51,6 +53,9 @@ def append_args(
     to_status: str | None = None,
     references: tuple[str, ...] = (),
     evidence_summary: str = "bounded test evidence",
+    expected_event_count: int = 0,
+    expected_event_tip: str = GENESIS_EVENT_SHA256,
+    expected_events_sha256: str = EMPTY_EVENTS_SHA256,
 ) -> list[str]:
     result = [
         "--stage",
@@ -59,6 +64,12 @@ def append_args(
         event_type,
         "--evidence-summary",
         evidence_summary,
+        "--expected-event-count",
+        str(expected_event_count),
+        "--expected-event-tip",
+        expected_event_tip,
+        "--expected-events-sha256",
+        expected_events_sha256,
     ]
     if packet_id is not None:
         result.extend(["--packet-id", packet_id])
@@ -69,6 +80,14 @@ def append_args(
     for reference in references:
         result.extend(["--reference", reference])
     return result
+
+
+def accepted_anchor(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "expected_event_count": metadata["accepted_event_count"],
+        "expected_event_tip": metadata["accepted_event_tip"],
+        "expected_events_sha256": metadata["accepted_events_sha256"],
+    }
 
 
 def read_objects(path: Path) -> tuple[bytes, list[dict[str, Any]]]:
@@ -86,7 +105,12 @@ def parse_timestamp(value: str) -> datetime:
     return parsed
 
 
-def assert_rejected_without_mutation(run_root: Path, args: list[str]) -> None:
+def assert_rejected_without_mutation(
+    run_root: Path,
+    args: list[str],
+    *,
+    expect_frozen: bool = False,
+) -> None:
     events = run_root / "EVENTS.jsonl"
     existed = events.exists()
     before = events.read_bytes() if existed else None
@@ -98,7 +122,19 @@ def assert_rejected_without_mutation(run_root: Path, args: list[str]) -> None:
     assert events.exists() is existed
     if existed:
         assert events.read_bytes() == before
-    assert not (run_root / "EVENTS.FROZEN").exists()
+    marker = run_root / "EVENTS.FROZEN"
+    if expect_frozen:
+        assert marker.read_bytes() == append_module.FREEZE_BYTES
+        frozen_bytes = marker.read_bytes()
+        refused_append = run_cli(run_root, *append_args())
+        refused_self_test = run_cli(run_root, "--self-test")
+        assert refused_append.returncode != 0
+        assert refused_self_test.returncode != 0
+        assert "frozen" in refused_append.stderr
+        assert "frozen" in refused_self_test.stderr
+        assert marker.read_bytes() == frozen_bytes
+    else:
+        assert not marker.exists()
 
 
 def test_new_and_empty_streams_append_exact_records() -> None:
@@ -125,6 +161,9 @@ def test_new_and_empty_streams_append_exact_records() -> None:
         first_metadata = json.loads(first.stdout)
         assert first_metadata["ok"] is True
         assert first_metadata["event_seq"] == 1
+        assert first_metadata["accepted_event_count"] == 1
+        assert len(first_metadata["accepted_event_tip"]) == 64
+        assert len(first_metadata["accepted_events_sha256"]) == 64
         assert secret_summary not in first.stdout
         assert not (run_root / "EVENTS.FROZEN").exists()
 
@@ -134,6 +173,7 @@ def test_new_and_empty_streams_append_exact_records() -> None:
                 stage="PLANNING",
                 event_type="stage_routed",
                 evidence_summary="routed to planning",
+                **accepted_anchor(first_metadata),
             ),
         )
         assert second.returncode == 0, second.stderr
@@ -156,6 +196,12 @@ def test_new_and_empty_streams_append_exact_records() -> None:
             objects[1]["timestamp"]
         )
         assert objects[0]["actor"] == "top_level_orchestrator"
+        assert objects[0]["previous_event_sha256"] == GENESIS_EVENT_SHA256
+        assert objects[0]["event_sha256"] == first_metadata["accepted_event_tip"]
+        assert objects[1]["previous_event_sha256"] == objects[0]["event_sha256"]
+        assert objects[1]["event_sha256"] == json.loads(second.stdout)[
+            "accepted_event_tip"
+        ]
         assert objects[0]["references"] == [
             {
                 "path": "reports/D-001-report.md",
@@ -203,7 +249,11 @@ def test_invalid_prefixes_never_mutate() -> None:
             run_root = Path(raw).resolve()
             events = run_root / "EVENTS.jsonl"
             events.write_bytes(prefix)
-            assert_rejected_without_mutation(run_root, append_args())
+            assert_rejected_without_mutation(
+                run_root,
+                append_args(),
+                expect_frozen=True,
+            )
 
 
 def test_hard_linked_event_stream_rejects_without_alias_mutation() -> None:
@@ -225,7 +275,11 @@ def test_hard_linked_event_stream_rejects_without_alias_mutation() -> None:
             return
         assert events.samefile(outside)
         assert events.stat().st_nlink > 1
-        assert_rejected_without_mutation(run_root, append_args())
+        assert_rejected_without_mutation(
+            run_root,
+            append_args(),
+            expect_frozen=True,
+        )
         assert outside.read_bytes() == original
         assert events.read_bytes() == original
 
@@ -305,6 +359,179 @@ def test_invalid_and_bounded_inputs_reject_before_stream_creation() -> None:
         )
         assert rejected.returncode != 0
         assert secret not in rejected.stderr
+
+        partial_anchor = run_cli(
+            run_root,
+            "--stage",
+            "DISCOVERY",
+            "--event-type",
+            "run_initialized",
+            "--evidence-summary",
+            "bounded",
+            "--expected-event-count",
+            "0",
+        )
+        assert partial_anchor.returncode != 0
+        assert not (run_root / "EVENTS.FROZEN").exists()
+
+
+def rewrite_as_valid_chain(objects: list[dict[str, Any]]) -> bytes:
+    previous = GENESIS_EVENT_SHA256
+    records: list[bytes] = []
+    for event in objects:
+        event.pop("event_sha256", None)
+        event["previous_event_sha256"] = previous
+        event["event_sha256"] = append_module.canonical_event_sha256(event)
+        previous = event["event_sha256"]
+        records.append(
+            json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            + b"\n"
+        )
+    return b"".join(records)
+
+
+def append_two_events(run_root: Path) -> dict[str, Any]:
+    first = run_cli(run_root, *append_args())
+    assert first.returncode == 0, first.stderr
+    first_metadata = json.loads(first.stdout)
+    second = run_cli(
+        run_root,
+        *append_args(
+            stage="PLANNING",
+            event_type="stage_routed",
+            evidence_summary="second accepted event",
+            **accepted_anchor(first_metadata),
+        ),
+    )
+    assert second.returncode == 0, second.stderr
+    return json.loads(second.stdout)
+
+
+def test_valid_json_history_rewrite_rejected_by_durable_anchor() -> None:
+    with tempfile.TemporaryDirectory(prefix="append-event-history-rewrite-") as raw:
+        run_root = Path(raw).resolve()
+        accepted = append_two_events(run_root)
+        events = run_root / "EVENTS.jsonl"
+        _, objects = read_objects(events)
+        objects[0]["evidence_summary"] = "tampered but rechained history"
+        rewritten = rewrite_as_valid_chain(objects)
+        events.write_bytes(rewritten)
+        append_module._validate_prefix(rewritten, None)
+        assert_rejected_without_mutation(
+            run_root,
+            append_args(**accepted_anchor(accepted)),
+            expect_frozen=True,
+        )
+
+
+def test_tail_truncation_and_stream_deletion_rejected_by_durable_anchor() -> None:
+    with tempfile.TemporaryDirectory(prefix="append-event-tail-truncate-") as raw:
+        run_root = Path(raw).resolve()
+        accepted = append_two_events(run_root)
+        events = run_root / "EVENTS.jsonl"
+        first_line = events.read_bytes().splitlines(keepends=True)[0]
+        events.write_bytes(first_line)
+        assert_rejected_without_mutation(
+            run_root,
+            append_args(**accepted_anchor(accepted)),
+            expect_frozen=True,
+        )
+
+    with tempfile.TemporaryDirectory(prefix="append-event-stream-delete-") as raw:
+        run_root = Path(raw).resolve()
+        first = run_cli(run_root, *append_args())
+        assert first.returncode == 0, first.stderr
+        accepted = json.loads(first.stdout)
+        (run_root / "EVENTS.jsonl").unlink()
+        assert_rejected_without_mutation(
+            run_root,
+            append_args(**accepted_anchor(accepted)),
+            expect_frozen=True,
+        )
+
+
+def test_missing_and_forged_chain_fields_freeze() -> None:
+    base: dict[str, Any] = {
+        "event_seq": 1,
+        "timestamp": "2026-01-01T00:00:00Z",
+        "event_type": "run_initialized",
+        "stage": "DISCOVERY",
+        "actor": "top_level_orchestrator",
+        "references": [],
+        "evidence_summary": "bounded",
+    }
+    missing = dict(base)
+    forged_previous = dict(base)
+    forged_previous["previous_event_sha256"] = "f" * 64
+    forged_previous["event_sha256"] = append_module.canonical_event_sha256(
+        forged_previous
+    )
+    forged_event = dict(base)
+    forged_event["previous_event_sha256"] = GENESIS_EVENT_SHA256
+    forged_event["event_sha256"] = "f" * 64
+
+    for index, event in enumerate((missing, forged_previous, forged_event)):
+        with tempfile.TemporaryDirectory(
+            prefix=f"append-event-forged-chain-{index}-"
+        ) as raw:
+            run_root = Path(raw).resolve()
+            serialized = (
+                json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode(
+                    "utf-8"
+                )
+                + b"\n"
+            )
+            (run_root / "EVENTS.jsonl").write_bytes(serialized)
+            assert_rejected_without_mutation(
+                run_root,
+                append_args(
+                    expected_event_count=1,
+                    expected_event_tip=event.get(
+                        "event_sha256", GENESIS_EVENT_SHA256
+                    ),
+                    expected_events_sha256=hashlib.sha256(serialized).hexdigest(),
+                ),
+                expect_frozen=True,
+            )
+
+
+def test_expected_count_tip_and_file_digest_mismatches_freeze() -> None:
+    mutations = (
+        {"expected_event_count": 0},
+        {"expected_event_tip": "f" * 64},
+        {"expected_events_sha256": "f" * 64},
+    )
+    for index, mutation in enumerate(mutations):
+        with tempfile.TemporaryDirectory(
+            prefix=f"append-event-anchor-mismatch-{index}-"
+        ) as raw:
+            run_root = Path(raw).resolve()
+            first = run_cli(run_root, *append_args())
+            assert first.returncode == 0, first.stderr
+            anchor = accepted_anchor(json.loads(first.stdout))
+            anchor.update(mutation)
+            assert_rejected_without_mutation(
+                run_root,
+                append_args(**anchor),
+                expect_frozen=True,
+            )
+
+    with tempfile.TemporaryDirectory(prefix="append-event-anchor-missing-") as raw:
+        run_root = Path(raw).resolve()
+        first = run_cli(run_root, *append_args())
+        assert first.returncode == 0, first.stderr
+        assert_rejected_without_mutation(
+            run_root,
+            [
+                "--stage",
+                "DISCOVERY",
+                "--event-type",
+                "stage_routed",
+                "--evidence-summary",
+                "missing durable anchor",
+            ],
+            expect_frozen=True,
+        )
 
 
 def test_run_root_symlink_rejects_without_target_mutation() -> None:
@@ -634,7 +861,7 @@ def test_self_test_is_isolated_and_removes_scratch() -> None:
         assert result.returncode == 0, result.stderr
         assert result.stderr == ""
         metadata = json.loads(result.stdout)
-        assert metadata == {"ok": True, "self_test": True, "checks": 3}
+        assert metadata == {"ok": True, "self_test": True, "checks": 7}
         assert real_events.read_bytes() == sentinel
         assert {path.name for path in run_root.iterdir()} == before_entries
         assert not list(run_root.glob(".append-event-self-test-*"))
@@ -657,6 +884,10 @@ def main() -> None:
     test_invalid_prefixes_never_mutate()
     test_reference_escapes_and_non_regular_files_reject()
     test_invalid_and_bounded_inputs_reject_before_stream_creation()
+    test_valid_json_history_rewrite_rejected_by_durable_anchor()
+    test_tail_truncation_and_stream_deletion_rejected_by_durable_anchor()
+    test_missing_and_forged_chain_fields_freeze()
+    test_expected_count_tip_and_file_digest_mismatches_freeze()
     test_run_root_symlink_rejects_without_target_mutation()
     test_short_stream_write_freezes_later_appends()
     test_stream_fsync_failure_freezes_later_appends()

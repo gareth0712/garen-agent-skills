@@ -34,6 +34,10 @@ canonical_repository_root: {physical/canonical existing repository root}
 canonical_worktree_root: {physical/canonical existing worktree root}
 canonical_run_root: {physical/canonical run root, or canonical nearest existing ancestor plus declared uncreated suffix until created}
 events_path: EVENTS.jsonl
+events_accepted_count: {0 before first append | accepted_event_count returned by last successful append}
+events_accepted_tip: {64 lowercase zeroes before first append | accepted_event_tip returned by last successful append}
+events_accepted_file_sha256: {e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 before first append | accepted_events_sha256 returned by last successful append}
+events_anchor_updated_at: {ISO-8601 timestamp and helper result evidence path}
 updated_at: {ISO-8601 timestamp}
 
 ## Harness and capabilities
@@ -146,52 +150,29 @@ Only the top-level orchestrator appends this bounded audit artifact. `AGENT-STAT
 Each line is one JSON object using this schema:
 
 ```json
-{"event_seq": 1, "timestamp": "{fresh timezone-aware ISO-8601 timestamp strictly later than the prior event}", "event_type": "{event type}", "stage": "DISCOVERY", "packet_id": "{D-### | none}", "from_status": "{prior status | none}", "to_status": "{new status | none}", "actor": "top_level_orchestrator", "references": [{"path": "{existing portable artifact path}", "revision": "{reproducible artifact revision}", "sha256": "{actual lowercase 64-hex SHA-256 of current file bytes}"}], "evidence_summary": "{bounded observation without secrets, chain-of-thought, transcripts, or raw logs}"}
+{"event_seq": 1, "timestamp": "{fresh timezone-aware ISO-8601 timestamp strictly later than the prior event}", "event_type": "{event type}", "stage": "DISCOVERY", "packet_id": "{D-### | none}", "from_status": "{prior status | none}", "to_status": "{new status | none}", "actor": "top_level_orchestrator", "references": [{"path": "{existing portable artifact path}", "revision": "{reproducible artifact revision}", "sha256": "{actual lowercase 64-hex SHA-256 of current file bytes}"}], "evidence_summary": "{bounded observation without secrets, chain-of-thought, transcripts, or raw logs}", "previous_event_sha256": "{64 zeroes for first event | prior validated event_sha256}", "event_sha256": "{canonical event SHA-256 defined by artifact-protocol.md}"}
 ```
 
 Use monotonically increasing `event_seq` and append events for `run_initialized`, `frozen_predecessor_reconciled` when applicable, `packet_created`, every `packet_status_transition`, `path_containment_preflight`, `preflight_blocked`, `worker_dispatched`, `report_observed`, `evidence_observed`, `path_containment_postwrite`, `artifact_sampled`, `packet_verified`, `gate_opened`, `gate_resolved`, `handoff_written`, `stage_routed`, and `reconciliation_contradiction` only while the current stream is healthy.
 
 Compute the SHA-256 at append time for every existing local reference and place it in the key named exactly `sha256`. Never write `hash`, `sha256: none`, a placeholder digest, or an informal revision in the digest field. Omit a not-yet-existing file from `references` and name its expected path only in `evidence_summary`. Read a fresh clock value for every line and require strict timestamp increase; do not reuse one timestamp for a batch.
 
-Use the verified `append_event` adapter for each complete line. Before append, require a valid complete JSONL prefix ending at a newline boundary and record its byte length/SHA-256. Append the UTF-8 object plus exactly one newline in one write call; close/flush; then prove unchanged prefix, exact byte delta, parsed-object equality, and final newline boundary. Never update an existing `EVENTS.jsonl` with an editor, patch, truncate-and-rewrite, or whole-file replacement. An invalid pre-existing tail blocks before append; a failed postcondition freezes further appends and routes recovery without rewriting history. Bootstrap capability evidence must record the same scratch-test invariants and observed signals.
+Use the verified `append_event` adapter for each complete line. CLI/reference validation occurs before freezing; then the helper arms `EVENTS.FROZEN` before reading the actual prefix. It validates the complete JSONL chain plus the durable accepted count/tip/file digest, appends once, proves the byte/chain postconditions, returns the next accepted anchor, and only then removes the marker. A malformed/partial/chain-invalid stream or anchor mismatch remains frozen. Never edit, patch, truncate, replace, or repair an existing stream.
 
 Default commands (replace every brace value; omit packet/status flags that do not apply):
 
 ```text
 python {absolute-skill-root}/scripts/append_event.py --self-test --run-root {absolute-run-root}
-python {absolute-skill-root}/scripts/append_event.py --run-root {absolute-run-root} --stage DISCOVERY --event-type {event_type} --packet-id {D-###} --from-status {pending|in_progress|blocked|verified|superseded} --to-status {pending|in_progress|blocked|verified|superseded} --reference {portable/existing/path} --evidence-summary {bounded summary}
+python {absolute-skill-root}/scripts/append_event.py --run-root {absolute-run-root} --stage DISCOVERY --event-type {event_type} --packet-id {D-###} --from-status {pending|in_progress|blocked|verified|superseded} --to-status {pending|in_progress|blocked|verified|superseded} --reference {portable/existing/path} --evidence-summary {bounded summary} --expected-event-count {events_accepted_count} --expected-event-tip {events_accepted_tip} --expected-events-sha256 {events_accepted_file_sha256}
 ```
 
-The script writes exact `sha256` references and returns only bounded metadata. After every event postcondition passes, the helper may retry only deletion of its own marker for Windows sharing/lock errors `32` or `33`: four total attempts, 25ms between failures, and fresh validation of the original identity, containment, regular single-link type, and exact marker bytes before each attempt. It never repeats the event write; exhaustion, any other error, disappearance, or validation change leaves/restores the stream frozen. Any marker remaining after the helper returns, or any nonzero append result, stops all later event appends. Perform the predecessor's one-time closure by updating only `AGENT-STATE.md`, one `internal_recovery` gate, and `SESSION-HANDOFF.md`; reopen/hash them, then keep the whole predecessor immutable. Recover only into a distinct run root using the exact lineage fields and immutable evidence template below. Callers never remove the marker or repair/retry the stream.
+The script writes exact reference hashes and chained events, then returns bounded metadata including `accepted_event_count`, `accepted_event_tip`, and `accepted_events_sha256`. Persist all three in state before another append. Their comparison detects history inconsistent with that durable anchor, not an attacker who can rewrite both stream and anchors. After every event postcondition passes, the helper may retry only deletion of its own marker for Windows sharing/lock errors `32` or `33`: four total attempts, 25ms between failures, and fresh validation of the original identity, containment, regular single-link type, and exact marker bytes before each attempt. It never repeats the event write; exhaustion, any other error, disappearance, or validation change leaves/restores the stream frozen. Any marker remaining after the helper returns, or any nonzero append result, stops all later event appends. Perform the predecessor's one-time closure by updating only `AGENT-STATE.md`, one `internal_recovery` gate, and `SESSION-HANDOFF.md`; reopen/hash them, then keep the whole predecessor immutable. Recover only into a distinct run root using the exact lineage fields and binding shared template. Callers never remove the marker or repair/retry the stream.
 
 A `verified` transition is invalid unless earlier events for the same packet record passing post-write physical containment, the existing report, existing evidence, and orchestrator sampling. On recovery, reconcile state, files, and events and downgrade unsupported `verified` state. Append `reconciliation_contradiction` only to a healthy current stream. For a frozen predecessor, record the contradiction in closure/successor evidence and append only `frozen_predecessor_reconciled` to the successor stream. `EVENTS.jsonl` improves production handoff but does not replace runner-owned lifecycle audit in evaluations.
 
 ## `evidence/recovery/frozen-predecessor.md`
 
-Write this immutable artifact inside the successor run root before initializing its stream. Every digest is computed after the bounded predecessor closure. The successor's `run_initialized` event may name the expected path in its bounded summary; `frozen_predecessor_reconciled` references this existing immutable file by exact `sha256`.
-
-```markdown
-# Frozen Predecessor Recovery
-
-protocol_version: autonomous-artifacts-v2
-successor_run_id: {new run ID}
-successor_run_root: {portable project-relative new run root}
-predecessor_run_root: {portable project-relative frozen run root}
-predecessor_canonical_run_root: {physical/canonical frozen run root observed during recovery}
-predecessor_state_sha256: {final lowercase 64-hex SHA-256 of predecessor AGENT-STATE.md}
-predecessor_events_sha256: {final lowercase 64-hex SHA-256 of predecessor EVENTS.jsonl}
-predecessor_freeze_sha256: {final lowercase 64-hex SHA-256 of predecessor EVENTS.FROZEN}
-predecessor_gate_path: {portable path to final internal_recovery gate}
-predecessor_gate_sha256: {final lowercase 64-hex SHA-256 of predecessor gate}
-predecessor_handoff_path: {portable path to predecessor SESSION-HANDOFF.md}
-predecessor_handoff_sha256: {final lowercase 64-hex SHA-256 of predecessor SESSION-HANDOFF.md}
-recovery_reason: {bounded reason the predecessor stream froze}
-contradictions_reconciled:
-- {unsupported status or stream contradiction and its disposition | none}
-collected_at: {timezone-aware ISO-8601 timestamp}
-```
-
-The six lineage values in successor `AGENT-STATE.md` must equal this artifact. Reopen and hash the predecessor files rather than trusting a summary. A missing, unreadable, mutable, placeholder, or mismatched predecessor artifact blocks recovery; do not initialize a successor that claims verified lineage.
+Use the exact binding template in `artifact-protocol.md` under `Binding evidence/recovery/frozen-predecessor.md template`. Do not fork, omit, or locally reinterpret its successor linkage, closure digests, observation times, physical-containment evidence, or six required state-lineage values.
 
 ## `SCOPE.md`
 
@@ -591,6 +572,7 @@ restart_mode: {manual | host-confirmed automatic action}
 - Verified packets and weights: {IDs and weights}
 - `completed_weight` / `session_budget`: {number} / {6 or 4}
 - Representative artifacts inspected: {paths and observed signals}
+- Accepted event anchor: count {events_accepted_count}, tip {events_accepted_tip}, file SHA-256 {events_accepted_file_sha256}, accepted at {events_anchor_updated_at}
 
 ## Active or blocked state
 
@@ -611,5 +593,5 @@ restart_mode: {manual | host-confirmed automatic action}
 
 ## Recovery note
 
-On resume, distrust conversation summaries. Reconcile packet status, reports, evidence, Git/filesystem state, lineage, and budget before dispatching a worker. If `EVENTS.FROZEN` exists, never append to it: complete only the bounded recovery closure, then continue in a distinct successor run root with verified lineage.
+On resume, distrust conversation summaries. Reconcile packet status, reports, evidence, Git/filesystem state, lineage, budget, and the actual event chain/count/tip/full-file digest against the durable accepted anchor before dispatching a worker. Never update an anchor to bless unexplained bytes. If `EVENTS.FROZEN` exists or the anchor mismatches, never append to that stream: complete only the bounded recovery closure, then continue in a distinct successor run root with verified lineage.
 ```

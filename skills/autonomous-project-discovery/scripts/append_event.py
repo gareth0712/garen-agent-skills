@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Append one byte-verified event to a discovery artifact stream."""
+"""Append one byte-verified event to an autonomous artifact event stream."""
 
 from __future__ import annotations
 
@@ -25,6 +25,9 @@ FREEZE_BYTES = b'{"state":"append_in_progress_or_failed","version":1}\n'
 STAGES = {"DISCOVERY": "D", "PLANNING": "P", "IMPLEMENTATION": "I"}
 STATUSES = {"pending", "in_progress", "verified", "blocked", "superseded"}
 PACKET_ID_RE = re.compile(r"([DPI])-\d{3}")
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+GENESIS_EVENT_SHA256 = "0" * 64
+EMPTY_EVENTS_SHA256 = hashlib.sha256(b"").hexdigest()
 MAX_REFERENCES = 32
 MAX_REFERENCE_BYTES = 512
 MAX_EVIDENCE_SUMMARY_BYTES = 4096
@@ -58,6 +61,7 @@ class PrefixState:
     sha256: str
     last_seq: int
     last_timestamp: datetime | None
+    last_event_sha256: str
     identity: tuple[int, int] | None
     existed: bool
 
@@ -315,14 +319,39 @@ def _parse_timestamp(value: Any) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def canonical_event_sha256(event: dict[str, Any]) -> str:
+    canonical = dict(event)
+    canonical.pop("event_sha256", None)
+    try:
+        body = json.dumps(
+            canonical,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeEncodeError) as error:
+        raise AppendEventError("event chain invalid") from error
+    return hashlib.sha256(body).hexdigest()
+
+
 def _validate_prefix(data: bytes, identity: tuple[int, int] | None) -> PrefixState:
     digest = hashlib.sha256(data).hexdigest()
     if not data:
-        return PrefixState(data, digest, 0, None, identity, identity is not None)
+        return PrefixState(
+            data,
+            digest,
+            0,
+            None,
+            GENESIS_EVENT_SHA256,
+            identity,
+            identity is not None,
+        )
     if not data.endswith(b"\n"):
         raise AppendEventError("invalid event prefix")
 
     previous_timestamp: datetime | None = None
+    previous_event_sha256 = GENESIS_EVENT_SHA256
     expected_seq = 1
     for raw_line in data[:-1].split(b"\n"):
         try:
@@ -344,13 +373,26 @@ def _validate_prefix(data: bytes, identity: tuple[int, int] | None) -> PrefixSta
         timestamp = _parse_timestamp(parsed.get("timestamp"))
         if previous_timestamp is not None and timestamp <= previous_timestamp:
             raise AppendEventError("invalid event prefix")
+        linked_previous = parsed.get("previous_event_sha256")
+        event_sha256 = parsed.get("event_sha256")
+        if (
+            not isinstance(linked_previous, str)
+            or SHA256_RE.fullmatch(linked_previous) is None
+            or linked_previous != previous_event_sha256
+            or not isinstance(event_sha256, str)
+            or SHA256_RE.fullmatch(event_sha256) is None
+            or canonical_event_sha256(parsed) != event_sha256
+        ):
+            raise AppendEventError("invalid event prefix")
         previous_timestamp = timestamp
+        previous_event_sha256 = event_sha256
         expected_seq += 1
     return PrefixState(
         data,
         digest,
         expected_seq - 1,
         previous_timestamp,
+        previous_event_sha256,
         identity,
         identity is not None,
     )
@@ -457,6 +499,50 @@ def _validate_inputs(
             raise AppendEventError("invalid packet id")
 
 
+def _validate_expected_anchor_inputs(
+    expected_event_count: int | None,
+    expected_event_tip: str | None,
+    expected_events_sha256: str | None,
+) -> None:
+    supplied = (
+        expected_event_count is not None,
+        expected_event_tip is not None,
+        expected_events_sha256 is not None,
+    )
+    if any(supplied) and not all(supplied):
+        raise AppendEventError("invalid accepted event anchor")
+    if not any(supplied):
+        return
+    if (
+        not isinstance(expected_event_count, int)
+        or isinstance(expected_event_count, bool)
+        or expected_event_count < 0
+        or not isinstance(expected_event_tip, str)
+        or SHA256_RE.fullmatch(expected_event_tip) is None
+        or not isinstance(expected_events_sha256, str)
+        or SHA256_RE.fullmatch(expected_events_sha256) is None
+    ):
+        raise AppendEventError("invalid accepted event anchor")
+
+
+def _require_expected_anchor(
+    prefix: PrefixState,
+    expected_event_count: int | None,
+    expected_event_tip: str | None,
+    expected_events_sha256: str | None,
+) -> None:
+    if expected_event_count is None:
+        if prefix.last_seq == 0:
+            return
+        raise AppendEventError("accepted event anchor required")
+    if (
+        prefix.last_seq != expected_event_count
+        or prefix.last_event_sha256 != expected_event_tip
+        or prefix.sha256 != expected_events_sha256
+    ):
+        raise AppendEventError("accepted event anchor mismatch")
+
+
 def _next_timestamp(previous: datetime | None) -> tuple[datetime, str]:
     current = datetime.now(timezone.utc)
     if previous is not None and current <= previous:
@@ -535,7 +621,7 @@ def _verify_postcondition(
     record: bytes,
     event: dict[str, Any],
     opened: os.stat_result,
-) -> None:
+) -> str:
     metadata = _event_file_stat(events_path, root, "append postcondition failed")
     if metadata is None or _identity(metadata) != _identity(opened):
         raise AppendEventError("append postcondition failed")
@@ -563,6 +649,7 @@ def _verify_postcondition(
         raise AppendEventError("append postcondition failed") from error
     if parsed != event:
         raise AppendEventError("append postcondition failed")
+    return hashlib.sha256(final).hexdigest()
 
 
 def append_event(
@@ -575,6 +662,9 @@ def append_event(
     to_status: str | None = None,
     references: Sequence[str] = (),
     evidence_summary: str,
+    expected_event_count: int | None = None,
+    expected_event_tip: str | None = None,
+    expected_events_sha256: str | None = None,
 ) -> dict[str, object]:
     root = resolve_run_root(run_root)
     _require_not_frozen(root)
@@ -587,9 +677,21 @@ def append_event(
         references,
         evidence_summary,
     )
+    _validate_expected_anchor_inputs(
+        expected_event_count,
+        expected_event_tip,
+        expected_events_sha256,
+    )
     hashed_references = [_hash_reference(root, path) for path in references]
     events_path = root / EVENTS_NAME
+    freeze = _arm_freeze_marker(root)
     prefix = _read_prefix(events_path, root)
+    _require_expected_anchor(
+        prefix,
+        expected_event_count,
+        expected_event_tip,
+        expected_events_sha256,
+    )
     _current, serialized_timestamp = _next_timestamp(prefix.last_timestamp)
     event: dict[str, Any] = {
         "event_seq": prefix.last_seq + 1,
@@ -606,11 +708,19 @@ def append_event(
     event["actor"] = "top_level_orchestrator"
     event["references"] = hashed_references
     event["evidence_summary"] = evidence_summary
+    event["previous_event_sha256"] = prefix.last_event_sha256
+    event["event_sha256"] = canonical_event_sha256(event)
     record = _serialize_event(event)
 
-    freeze = _arm_freeze_marker(root)
     opened, written, write_failed = _append_once(events_path, prefix, record)
-    _verify_postcondition(events_path, root, prefix, record, event, opened)
+    accepted_events_sha256 = _verify_postcondition(
+        events_path,
+        root,
+        prefix,
+        record,
+        event,
+        opened,
+    )
     if write_failed or written != len(record):
         raise AppendEventError("append write failed")
     _remove_freeze_marker(root, freeze)
@@ -620,6 +730,9 @@ def append_event(
         "bytes_appended": len(record),
         "prefix_length": len(prefix.data),
         "prefix_sha256": prefix.sha256,
+        "accepted_event_count": event["event_seq"],
+        "accepted_event_tip": event["event_sha256"],
+        "accepted_events_sha256": accepted_events_sha256,
     }
 
 
@@ -649,6 +762,9 @@ def run_self_test(run_root: str | Path) -> dict[str, object]:
             event_type="stage_routed",
             references=("reference.txt",),
             evidence_summary="self-test second append",
+            expected_event_count=int(first["accepted_event_count"]),
+            expected_event_tip=str(first["accepted_event_tip"]),
+            expected_events_sha256=str(first["accepted_events_sha256"]),
         )
         scratch_events = scratch_path / EVENTS_NAME
         complete = scratch_events.read_bytes()
@@ -658,6 +774,15 @@ def run_self_test(run_root: str | Path) -> dict[str, object]:
             first.get("event_seq") != 1
             or second.get("event_seq") != 2
             or [item.get("event_seq") for item in parsed] != [1, 2]
+            or parsed[0].get("previous_event_sha256")
+            != GENESIS_EVENT_SHA256
+            or parsed[1].get("previous_event_sha256")
+            != parsed[0].get("event_sha256")
+            or any(canonical_event_sha256(item) != item.get("event_sha256") for item in parsed)
+            or second.get("accepted_event_count") != 2
+            or second.get("accepted_event_tip") != parsed[1].get("event_sha256")
+            or second.get("accepted_events_sha256")
+            != hashlib.sha256(complete).hexdigest()
             or _parse_timestamp(parsed[0].get("timestamp"))
             >= _parse_timestamp(parsed[1].get("timestamp"))
             or any(
@@ -680,12 +805,29 @@ def run_self_test(run_root: str | Path) -> dict[str, object]:
                 stage="DISCOVERY",
                 event_type="stage_routed",
                 evidence_summary="self-test rejection",
+                expected_event_count=int(second["accepted_event_count"]),
+                expected_event_tip=str(second["accepted_event_tip"]),
+                expected_events_sha256=str(second["accepted_events_sha256"]),
             )
         except AppendEventError:
             pass
         else:
             raise AppendEventError("self-test failed")
         if scratch_events.read_bytes() != rejected_prefix:
+            raise AppendEventError("self-test failed")
+        marker = scratch_path / FREEZE_NAME
+        if marker.read_bytes() != FREEZE_BYTES:
+            raise AppendEventError("self-test failed")
+        try:
+            append_event(
+                scratch_path,
+                stage="PLANNING",
+                event_type="stage_routed",
+                evidence_summary="self-test frozen refusal",
+            )
+        except AppendEventError:
+            pass
+        else:
             raise AppendEventError("self-test failed")
     except Exception as error:
         failure = error
@@ -697,7 +839,7 @@ def run_self_test(run_root: str | Path) -> dict[str, object]:
                 failure = error
     if failure is not None:
         raise AppendEventError("self-test failed") from failure
-    return {"ok": True, "self_test": True, "checks": 3}
+    return {"ok": True, "self_test": True, "checks": 7}
 
 
 def build_parser() -> SafeArgumentParser:
@@ -711,6 +853,9 @@ def build_parser() -> SafeArgumentParser:
     parser.add_argument("--to-status")
     parser.add_argument("--reference", action="append", default=[])
     parser.add_argument("--evidence-summary")
+    parser.add_argument("--expected-event-count", type=int)
+    parser.add_argument("--expected-event-tip")
+    parser.add_argument("--expected-events-sha256")
     return parser
 
 
@@ -725,6 +870,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 arguments.from_status,
                 arguments.to_status,
                 arguments.evidence_summary,
+                arguments.expected_event_count,
+                arguments.expected_event_tip,
+                arguments.expected_events_sha256,
             )
             if any(value is not None for value in append_fields) or arguments.reference:
                 raise AppendEventError("invalid arguments")
@@ -745,6 +893,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 to_status=arguments.to_status,
                 references=tuple(arguments.reference),
                 evidence_summary=arguments.evidence_summary,
+                expected_event_count=arguments.expected_event_count,
+                expected_event_tip=arguments.expected_event_tip,
+                expected_events_sha256=arguments.expected_events_sha256,
             )
         sys.stdout.write(json.dumps(metadata, separators=(",", ":")) + "\n")
         return 0
