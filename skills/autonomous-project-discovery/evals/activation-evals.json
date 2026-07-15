@@ -1,0 +1,78 @@
+{
+  "skill_name": "autonomous-project-discovery",
+  "purpose": "Routing-only activation checks; these do not replace full workflow evals.",
+  "cases": [
+    {
+      "id": 1,
+      "prompt": "Build me a new AI agent platform.",
+      "first_stage": "Discovery",
+      "required_artifact": "DISCOVERY.md",
+      "follow_up": "Planning, then Implementation only after both readiness gates",
+      "reason": "Greenfield build with no current Discovery artifact."
+    },
+    {
+      "id": 2,
+      "prompt": "Help me explore whether I should build a personal OS.",
+      "first_stage": "Discovery",
+      "required_artifact": "DISCOVERY.md",
+      "follow_up": "Stop after Discovery unless later requested",
+      "reason": "The request explicitly asks for project framing, not execution."
+    },
+    {
+      "id": 3,
+      "prompt": "Create an implementation plan for the project described in project-discovery.md.",
+      "first_stage": "Planning",
+      "required_artifact": "A current sufficient Discovery artifact or documented equivalent",
+      "follow_up": "Planning only unless execution is requested",
+      "reason": "The request supplies the upstream framing artifact; Planning must validate freshness first."
+    },
+    {
+      "id": 4,
+      "prompt": "Implement the approved plan in implementation-plan.md.",
+      "first_stage": "Implementation",
+      "required_artifact": "A current approved plan plus referenced Discovery evidence",
+      "follow_up": "Execute only after consistency/readiness validation",
+      "reason": "A direct execution request with an approved upstream plan should not restart broad Discovery."
+    },
+    {
+      "id": 5,
+      "prompt": "Fix the incorrect loading state in the existing dashboard.",
+      "first_stage": "Ordinary scoped implementation",
+      "required_artifact": "None",
+      "follow_up": "No autonomous pipeline by default",
+      "reason": "Small, well-specified work in an understood existing project."
+    },
+    {
+      "id": 6,
+      "prompt": "Add a new billing subsystem to the existing SaaS.",
+      "first_stage": "Discovery depth gate",
+      "required_artifact": "Depth decision and DISCOVERY.md when targeted/full",
+      "follow_up": "Planning after Discovery readiness",
+      "reason": "A major subsystem may require targeted or full Discovery depending on ambiguity and blast radius."
+    },
+    {
+      "id": 7,
+      "prompt": "Continue yesterday's implementation.",
+      "first_stage": "Implementation rehydration",
+      "required_artifact": "AGENT-STATE.md and current upstream artifacts",
+      "follow_up": "Continue the verified next stage without restarting upstream work",
+      "reason": "Continuation uses durable state unless new evidence invalidates it."
+    },
+    {
+      "id": 8,
+      "prompt": "The current architecture no longer supports the newly required offline mode.",
+      "first_stage": "Planning, or Discovery if the product framing changes",
+      "required_artifact": "Contradiction evidence and current upstream artifacts",
+      "follow_up": "Re-plan or rediscover before Implementation resumes",
+      "reason": "Routing depends on whether offline mode changes architecture only or the product framing."
+    },
+    {
+      "id": 9,
+      "prompt": "Build a brand-new, fully specified single-user desktop expense tracker: local SQLite only, CSV import, monthly/category reports, no cloud, no accounts, Windows and macOS packaging, automated tests, and no telemetry. No Discovery or planning artifact exists.",
+      "first_stage": "Discovery",
+      "required_artifact": "DISCOVERY.md",
+      "follow_up": "Planning only after Discovery readiness, then Implementation because build was requested",
+      "reason": "A detailed greenfield brief without a current sufficient Discovery artifact still enters Discovery first; detail may shorten the full pass but cannot bypass it."
+    }
+  ]
+}

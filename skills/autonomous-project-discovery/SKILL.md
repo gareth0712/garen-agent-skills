@@ -1,6 +1,6 @@
 ---
 name: autonomous-project-discovery
-description: Use when an insufficiently framed greenfield project, product, repository, or substantial new subsystem needs exploration before planning, or when the user asks to explore whether an idea should exist; skip for small, well-specified work in an understood existing project.
+description: Use whenever a greenfield project, product, repository, or application has no current sufficient Discovery artifact or equivalent, even when the request is detailed; also use for materially ambiguous substantial new subsystems or when the user asks whether an idea should exist. Skip routine, well-specified work in an understood existing project.
 ---
 
 # Autonomous Project Discovery
@@ -27,12 +27,14 @@ Treat every loaded rule as binding. If the references conflict, apply the safer 
 
 Use this workflow for:
 
-- an insufficiently framed greenfield project, product, or repository;
+- any greenfield/new project, product, repository, application, platform, service, or system without a current sufficient Discovery artifact or equivalent, even when the prompt appears detailed or well specified;
 - a substantial new subsystem whose outcome, users, scope, risks, or constraints remain materially ambiguous;
 - a request to explore whether an idea should exist;
 - stale or insufficient framing routed backward by Planning or Implementation.
 
-Do not activate the full workflow for ordinary questions, small bug fixes, narrow refactors, copy changes, or well-specified work in an understood existing project. If invoked and the evidence supports `skip`, record the depth decision and route to the ordinary scoped workflow.
+Do not activate the full workflow for ordinary questions, small bug fixes, narrow refactors, copy changes, or well-specified work in an understood existing project. If invoked for one of those existing-project cases and the evidence supports `skip`, record the depth decision and route to the ordinary scoped workflow.
+
+Do not use prompt detail as a substitute for a current upstream artifact. A greenfield request without a sufficient Discovery artifact enters Discovery first and selects `full`; a detailed brief may make that pass short and immediately ready, but it may not bypass the stage. A current equivalent artifact may satisfy the gate when it contains the required framing and freshness evidence even if its filename differs.
 
 Run the orchestrator in the top-level session. If this skill is invoked inside a worker and the host forbids nested delegation, return a hard blocker to the parent instead of pretending orchestration occurred.
 
