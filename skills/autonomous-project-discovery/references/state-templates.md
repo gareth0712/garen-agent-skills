@@ -102,6 +102,11 @@ user_override_evidence:
   authority: {user/product authority | none}
   exact_scope: {continued scope | none}
 revisit_trigger: {measurable condition | none}
+revisit_trigger_state: {not_applicable | not_reached | fired | unverifiable}
+revisit_trigger_evidence:
+  path: {current evidence path | none}
+  revision: {stable revision or digest | none}
+  observed_at: {timezone-aware ISO-8601 | none}
 
 ## Artifact lineage
 
@@ -277,6 +282,7 @@ updated_at: {ISO-8601 timestamp}
 - Verifiability gate state: {approved | partial | insufficient}
 - Product justification state: {approved | blocked | user_directed_unapproved | bypassed_learning}
 - Evidence path/revision/observed at: {path, stable revision or digest, timezone-aware ISO-8601}
+- Revisit trigger/state/evidence: {condition | none} / {not_applicable | not_reached | fired | unverifiable} / {path, revision, observed_at | none}
 - Discovery endorsement boundary: {endorsed for current scope | user-directed continuation without endorsement | bounded learning only | blocked}
 
 ## Direct-model baseline and durable value evidence
@@ -314,6 +320,7 @@ updated_at: {ISO-8601 timestamp}
 - Non-endorsement/effect boundary: {boundary | none}
 - Learning objective/non-commercial boundary/reason/time-effect limits: {record | none}
 - Revisit trigger: {measurable production/commercial trigger | none}
+- Revisit trigger state/evidence: {not_applicable | not_reached | fired | unverifiable} / {current path, revision, observed_at | none}
 
 ## Stakeholders, users, and outcomes
 
@@ -644,6 +651,7 @@ restart_mode: {manual | host-confirmed automatic action}
 - override or bypass boundary: {authority, exact scope, non-endorsement or learning boundary | none | omitted_for_skip}
 - effect-blocking gates: {gate paths and prohibited effects | none | omitted_for_skip}
 - revisit_trigger: {measurable condition | none | omitted_for_skip}
+- revisit_trigger_state/evidence: {not_applicable | not_reached | fired | unverifiable | omitted_for_skip} / {current path, revision, observed_at | none | omitted_for_skip}
 
 ## Active or blocked state
 

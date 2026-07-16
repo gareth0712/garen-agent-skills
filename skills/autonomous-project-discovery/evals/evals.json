@@ -55,7 +55,8 @@
         "Exactly one unresolved sharp question names the durable-value decision, its materiality, and the evidence required; it is persisted in the canonical product_decision gate rather than asked as a broad questionnaire.",
         "AGENT-STATE.md records product_intent, existence_gate_state, verifiability_gate_state, product_justification_state, product_justification_evidence, exact override evidence or none, and revisit_trigger or none.",
         "No model execution, baseline result, product advantage, metric, external effect, or fixed prompt-count threshold is invented.",
-        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary."
+        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary.",
+        "Accepted event anchor in AGENT-STATE.md agrees with the recomputed EVENTS.jsonl count, tip, and full-file SHA-256; every accepted worker report/evidence has immutable receipt and orchestrator sampling evidence."
       ]
     },
     {
@@ -69,7 +70,8 @@
         "The canonical external_evidence gate names the missing baseline, an external evidence owner, prohibited unauthorized execution, and a falsifiable recovery check; absence of baseline evidence is not described as success or observed failure.",
         "AGENT-STATE.md records product_intent, existence_gate_state, verifiability_gate_state, product_justification_state, product_justification_evidence, exact override evidence or none, and revisit_trigger or none.",
         "No model execution, baseline result, product advantage, metric, external effect, or fixed prompt-count threshold is invented.",
-        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary."
+        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary.",
+        "Accepted event anchor in AGENT-STATE.md agrees with the recomputed EVENTS.jsonl count, tip, and full-file SHA-256; every accepted worker report/evidence has immutable receipt and orchestrator sampling evidence."
       ]
     },
     {
@@ -84,7 +86,8 @@
         "No additional question re-litigates the explicitly overridden existence gate; Planning readiness is not described as product approval.",
         "AGENT-STATE.md records product_intent, existence_gate_state, verifiability_gate_state, product_justification_state, product_justification_evidence, exact override evidence or none, and revisit_trigger or none.",
         "No model execution, baseline result, product advantage, metric, external effect, or fixed prompt-count threshold is invented.",
-        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary."
+        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary.",
+        "Accepted event anchor in AGENT-STATE.md agrees with the recomputed EVENTS.jsonl count, tip, and full-file SHA-256; every accepted worker report/evidence has immutable receipt and orchestrator sampling evidence."
       ]
     },
     {
@@ -97,9 +100,11 @@
         "DISCOVERY.md contains Product intent and justification state, Direct-model baseline and durable value evidence, Outcome verifiability matrix, and Sharp questions, answers, and rejected framings.",
         "Override or learning-bypass evidence records the learning objective, non-commercial boundary, reason, bounded time/effects, every production/commercial revisit trigger, and no production endorsement.",
         "The learning bypass does not remove or weaken any of the twelve outcome-verifiability fields and expires at the first supplied trigger.",
+        "revisit_trigger_state is not_reached with current prompt/revision evidence; any fired or unverifiable state would deterministically block and route to Discovery.",
         "AGENT-STATE.md records product_intent, existence_gate_state, verifiability_gate_state, product_justification_state, product_justification_evidence, exact override evidence or none, and revisit_trigger or none.",
         "No model execution, baseline result, product advantage, metric, external effect, or fixed prompt-count threshold is invented.",
-        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary."
+        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary.",
+        "Accepted event anchor in AGENT-STATE.md agrees with the recomputed EVENTS.jsonl count, tip, and full-file SHA-256; every accepted worker report/evidence has immutable receipt and orchestrator sampling evidence."
       ]
     },
     {
@@ -115,7 +120,8 @@
         "No detailed architecture, API/data contract, implementation stage, or deployment choice is selected by Discovery.",
         "AGENT-STATE.md records product_intent, existence_gate_state, verifiability_gate_state, product_justification_state, product_justification_evidence, exact override evidence or none, and revisit_trigger or none.",
         "No model execution, baseline result, product advantage, metric, external effect, or fixed prompt-count threshold is invented.",
-        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary."
+        "Every material outcome row contains all twelve canonical fields and distinguishes automatic verification from the named human boundary.",
+        "Accepted event anchor in AGENT-STATE.md agrees with the recomputed EVENTS.jsonl count, tip, and full-file SHA-256; every accepted worker report/evidence has immutable receipt and orchestrator sampling evidence."
       ]
     }
   ]

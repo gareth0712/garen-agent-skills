@@ -23,7 +23,7 @@ Authority and external effects:
 - Material product, legal, security, expensive, or hard-to-reverse decisions: require explicit approval
 - Direct-model baseline authority: read-only local evidence only; external model/API execution requires separately recorded authority
 - User override policy: if I explicitly insist after an insufficient gate, continue as `user_directed_unapproved`; preserve the failed claims and never call the project approved
-- Learning/prototype bypass policy: bypass product-existence justification only with a learning objective, non-commercial boundary, bounded effects/time, and revisit trigger; outcome verification remains mandatory
+- Learning/prototype bypass policy: bypass product-existence justification only with a learning objective, non-commercial boundary, bounded effects/time, and revisit trigger; outcome verification remains mandatory; recheck and evidence the trigger at rehydrate/readiness, blocking when fired or unverifiable
 
 Checkpoint policy:
 - Commit policy: do not commit unless I explicitly authorize a path-limited checkpoint

@@ -59,6 +59,14 @@ A production/commercial pass requires evidence of at least one material advantag
 
 For `learning_prototype`, `existence_gate_state: bypassed_learning` requires a learning objective, non-commercial boundary, reason the reproduction serves that objective, bounded time/effects, and a measurable production/commercial revisit trigger. The bypass expires at that trigger. It never bypasses the outcome challenge.
 
+#### Trigger transition
+
+Evaluate every learning revisit trigger during bootstrap/rehydration and immediately before a `ready` route. Persist `revisit_trigger_state` as `not_reached`, `fired`, or `unverifiable` with current evidence path, revision, and observation time; production/commercial work uses `not_applicable`. `not_reached` requires affirmative current evidence, not silence.
+
+- `fired`: change intent to `production_commercial`; set existence to `insufficient`, aggregate justification to `blocked`, readiness to `not_ready`, and next stage to `DISCOVERY`. Preserve the expired bypass evidence and require a new production/commercial review. A later exact user insistence may take the ordinary `user_directed_unapproved` route but never revives the bypass.
+- `unverifiable`: keep the prior intent as an observed fact, set existence to `external_evidence`, aggregate justification to `blocked`, readiness to `not_ready`, and next stage to `DISCOVERY`; open one canonical external-evidence gate naming what proves the trigger has not fired.
+- `not_reached`: the bypass may remain only when its outcome verifiability gate is `approved` and every other readiness requirement passes.
+
 ### Outcome rows and sharp questions
 
 Create one row per material outcome with these exact fields: `outcome_id`, `claim`, `oracle_or_metric`, `representative_fixtures`, `adversarial_fixtures`, `acceptable_error`, `failure_classes`, `automatic_verification`, `human_boundary`, `rollback_recovery`, `falsification_condition`, and `owner_deadline`. The row frames observable acceptance; Planning still owns detailed test architecture and implementation sequencing.
