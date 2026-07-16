@@ -43,6 +43,7 @@ Worker and evidence policy:
 - Freeze only Small/1 or Medium/2 stages; Large is invalid and routes to Planning for splitting
 - Dispatch exactly one fresh state-changing implementation worker at a time with the Task Contract verbatim, instruction paths, exact product/artifact writes, exact side effects, physical anchors, verification/fallback/UAT, and <=10-line return contract
 - Worker writes full report/evidence first; worker `done`, exit code, or commit is not acceptance
+- After every worker/reviewer return, the orchestrator records the exact host-return boundary and writes an immutable `evidence/I-###/worker-return-attempt-###.md` with dispatch/worker identity, terminal subtree status, canonical UTF-8 base64 return bytes/line count/hash, report/evidence hashes, and temporal checks; the receipt says only `return_observed`, while a later immutable acceptance/rejection event records final disposition; reconcile dispatch, receipt, retry, and remediation counts before acceptance or redispatch
 - Top-level orchestrator independently rechecks containment, dirty paths, scoped diff, exact commands, representative changed artifacts, and one real affected flow before `verified`
 
 Model and host policy:

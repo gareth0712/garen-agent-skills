@@ -31,7 +31,7 @@ Use this workflow for:
 - a request to prepare implementation when framing is current but the plan is missing or mechanically incomplete;
 - a bounded Planning repair routed from Implementation because architecture, interfaces, data, sequencing, migration, deployment, or verification detail is missing or contradicted.
 
-Do not bypass Discovery. A filename is not readiness: if framing is absent, stale, internally contradictory, or missing a material product decision, preserve evidence and route only the affected scope to `autonomous-project-discovery`. Accept a nonstandard artifact when its content, lineage, freshness, and decision ownership satisfy the Discovery gate.
+Do not bypass Discovery. A filename is not readiness: if framing is absent, stale, internally contradictory, or missing a material product decision, preserve evidence and route only the affected scope to `autonomous-project-discovery`. When a safe default and exact stop boundary let Planning define the remaining architecture, interfaces, verification, and conditional Task Contracts without inventing that decision, the upstream gate blocks only the named affected downstream boundary and must not block completion of the remaining Planning-owned contracts. Accept a nonstandard artifact when its content, lineage, freshness, and decision ownership satisfy the Discovery gate.
 
 Do not bypass Implementation. A direct execution request with a current approved execution-ready plan routes to `autonomous-implementation`; Planning reopens only for a concrete plan defect. Ordinary questions, small bug fixes, narrow refactors, copy changes, and fully specified low-risk changes use ordinary scoped workflows unless the user explicitly invokes this pipeline.
 
@@ -48,10 +48,12 @@ Run the orchestrator in the top-level session. If invoked inside a worker and th
 - Every packet has one primary outcome and is `Small`/1 or `Medium`/2. `Large` is invalid and must be split.
 - Session budgets are ceilings: 6 weight units normally, 4 for high-risk, security/data/external-integration, or UI-related planning. Never rush, merge, or weaken verification to spend or fit the budget.
 - A worker writes its report and evidence before returning at most ten lines. The orchestrator independently inspects representative artifacts and cited evidence before changing status to `verified`.
+- After every worker return, the orchestrator writes an immutable attempt receipt such as `evidence/P-###/worker-return-attempt-001.md` with the attempt number, dispatch event/worker identity, host terminal status, disposition, observation time, exact returned line count, and bounded returned text/hash. Packet instructions or chat summaries are not evidence that the return was fresh, terminal, or at most ten lines.
 - Record `requested_model`, `effective_model`, and fallback reason. When context telemetry is unavailable, record `unavailable`; never estimate hidden context.
 - Every final implementation stage has an exact Task Contract. Never leave architecture-changing decisions for Implementation under vague labels such as “follow best practices.”
 - Every Task Contract declares `Allowed side effects`. External, irreversible, destructive, or public effects default to `none/not_authorized` unless exact current authority is cited; owned files never imply authority to deploy, message, migrate live data, or mutate another system.
 - Plan readiness is not execution approval. Persist `planning_approval_state` and the exact `planning_approval_evidence` mapping (`path`, `revision`, `authority`). Only a current execution request whose bounded scope and side effects stay within recorded authority may become `delegated_execution_authority`; otherwise use a canonical approval gate. Independent review and orchestrator acceptance never manufacture approval.
+- Decision authority precedes impact labels. Before opening a human/product/security gate, map the exact choice to accepted Discovery/SCOPE ownership. Planning must decide an architecture, interface, data, workflow, or security mechanism that remains inside explicitly delegated outcomes, constraints, non-goals, and side-effect ceilings; a security label alone cannot revoke that delegation.
 - Preferred tools, model classes, and automatic session restart are requests, not assumptions.
 
 ## Workflow
@@ -104,7 +106,7 @@ Preflight inputs, authority, capabilities, model fallback, dependencies, durable
 
 When preflight passes, dispatch exactly one fresh worker with the packet verbatim, required instruction paths, accepted Discovery revision, repository evidence paths, allowed writes, report/evidence targets, requested/effective model contract, physical anchors, and at-most-ten-line return contract. Wait only through host-supported mechanisms.
 
-After return, re-resolve every written target, inspect the report and representative output, verify cited evidence against repository files/commands, and append observation/sampling events. Only then mark the packet verified and fold accepted decisions into `MASTER-PLAN.md`. Diagnose before a bounded retry; allow at most two evidence-driven remediation cycles.
+After return, record the orchestrator-owned worker-return receipt, re-resolve every written target, inspect the report and representative output, verify cited evidence against repository files/commands, and append observation/sampling events. The receipt and stable artifact mtimes/embedded timestamps must not be later than the observation event; repair or block contradictory lifecycle time rather than backdating an event. Only then mark the packet verified and fold accepted decisions into `MASTER-PLAN.md`. Diagnose before a bounded retry; allow at most two evidence-driven remediation cycles.
 
 Completion criterion: the packet is `verified`, `blocked`, or `superseded` with durable evidence and one next action.
 
@@ -112,7 +114,9 @@ Completion criterion: the packet is `verified`, `blocked`, or `superseded` with 
 
 Maintain `MASTER-PLAN.md` from accepted packet outputs. Cover, when relevant: architecture and component boundaries; interfaces and versioning; data model and invariants; user/system workflows and failure recovery; security/privacy/accessibility/observability; migration/backfill/rollback; deployment/rollout; tests and real-flow verification; dependency ordering; checkpoints; human gates; and exact implementation Task Contracts.
 
-Every Task Contract includes Goal, Inputs and freshness, dependencies, in/out scope, files or surfaces, decision authority, allowed side effects, concrete verification with expected signal, fallback/rollback point, UAT classification, and stop condition. An Implementation worker must not need conversation history to execute it.
+When the user explicitly requests architecture, scale, resilience, or tier comparison—or current Discovery/equivalent evidence for this scope contains one named material workload, criticality, reliability, recovery, data, geographic, compliance, operational, integration, or cost trigger—include one bounded `System design scenario matrix`. Compare `Small / Baseline`, `Medium / Growth and HA`, and `Enterprise / High-scale or mission-critical` against the same product invariants; correctness, security, privacy, and safety requirements remain identical across all three profiles. A user count alone never selects a profile or topology; record the complete workload/risk envelope, explicit assumptions, recommendation, deltas, and measurable upgrade triggers. Without activation evidence, keep the lean plan and do not manufacture three architectures. Task Contracts cover only the authorized current profile unless the current execution request explicitly authorizes named future-profile work and records that request's path, revision, authority, and profiles.
+
+Every Task Contract includes Goal, Inputs and freshness, dependencies, in/out scope, files or surfaces, decision authority, allowed side effects, concrete verification with expected signal, fallback/rollback point, UAT classification, and stop condition. An Implementation worker must not need conversation history to execute it. Before synthesis acceptance, reapply the observable implementation sizing rubric to each contract, prove every mandatory architecture/interface prerequisite from current repository evidence or explicitly authorize and stage its creation, and close every parsed/serialized data shape with exact malformed-input classification and deterministic ordering. When a public error tuple exposes both class/category and code, every stable code maps to exactly one class; combined class cells are invalid without an explicit deterministic predicate.
 
 Also emit approval separately from technical readiness. Bind approval to the exact planning revision, requested execution scope, stop boundary, and side-effect authority. `delegated_execution_authority` cites a durable request/scope artifact; `explicitly_approved` cites the resolved canonical gate. `not_requested` and `approval_required` never route to Implementation as if approved.
 
@@ -120,11 +124,15 @@ Completion criterion: no stage is Large, dependencies are acyclic, verification 
 
 ### 8. Run independent final plan review
 
-After synthesis, dispatch a fresh reviewer as its own sequential `P-###` packet. The reviewer checks Discovery alignment, repository evidence, completeness, internal consistency, feasibility, dependency order, interface/data coherence, migration and recovery safety, verification coverage, exact Task Contracts, scope leakage, and unresolved decision ownership.
+After synthesis, dispatch a fresh reviewer as its own sequential `P-###` packet. The reviewer checks Discovery alignment, repository evidence, completeness, internal consistency, feasibility, dependency order, interface/data coherence, migration and recovery safety, verification coverage, exact Task Contracts, scope leakage, and unresolved decision ownership. It must independently repeat the per-contract sizing, evidence-backed mandatory-prerequisite, closed deterministic data-shape, and total per-code public-error class mapping checks; structural field completeness alone is not readiness evidence.
+
+For an activated system-design matrix, the reviewer also verifies all three profiles, an evidence-driven recommendation, `required` / evidenced `not_applicable` / owned-and-triggered `deferred` dispositions, resilience/recovery/operations/security/cost coverage, identical correctness/security/privacy/safety requirements, and that Task Contracts implement only the authorized current profile unless the current execution request contains the exact future-profile authorization evidence.
 
 Critical Planning defects become bounded repair packets. A framing defect routes to Discovery. A CRITICAL finding closes only through verified repair or an evidence-backed route to its owning stage; it can never be accepted as risk. Any non-critical risk acceptance names the authority and does not silently satisfy readiness. The author of a packet must not be treated as the independent acceptor of the overall plan.
 
 Completion criterion: all critical findings are repaired or routed with evidence; review report and disposition are linked from `MASTER-PLAN.md` and state.
+
+Fold only the review disposition into the final candidate, remove every pending-review marker, and write `evidence/final-plan-lock.md`. That lock records the reviewed candidate hash, final plan hash, and a mechanically checked candidate-to-final diff limited to review metadata. Any semantic change requires another fresh review.
 
 ### 9. Apply the Implementation readiness gate
 
@@ -162,6 +170,8 @@ Route by ownership:
 
 Persist `continuation_kind`, verification, exact continuation value, and manual restart truth. A verified command requires an observed harmless capability check; otherwise write a precise natural-language `manual_host_action` naming `autonomous-planning`, the absolute run root, first-read files, gate input, and next action.
 
+Finalize without circular hashes: freeze the final plan, review, receipts, final verification, response, and other terminal evidence; write an immutable `evidence/finalization-manifest.md` with their exact hashes; append the terminal event referencing only that immutable manifest/frozen artifacts. Then update the live `AGENT-STATE.md` and `SESSION-HANDOFF.md` with the returned terminal anchor. The terminal event must not reference either mutable index. Never modify a manifest-listed artifact afterward; a required change creates a new versioned artifact and later event.
+
 ## Bounded authority
 
 Planning may decide low-impact reversible design choices and medium-impact choices only within authority delegated by current framing. High-impact, security/legal-sensitive, public, expensive, destructive, user-facing, or hard-to-reverse choices require explicit authority unless the upstream artifact grants the exact choice.
@@ -175,9 +185,12 @@ Planning is complete only when:
 - `AGENT-STATE.md`, `SCOPE.md`, accepted Discovery source, and `MASTER-PLAN.md` are current and mutually consistent;
 - the Discovery field-level sufficiency/freshness gate and repository evidence are recorded;
 - every verified packet has report-before-state evidence and representative orchestrator sampling;
+- every dispatched worker has one immutable terminal `worker-return-attempt-###.md` receipt, dispatch/receipt/retry/remediation counts reconcile, and artifact/receipt/event times are monotonically observable;
 - every Large unit was split and session ceilings were treated as maximums, not targets;
 - requested/effective models and unavailable telemetry are honest;
 - a fresh independent reviewer accepted the plan or every critical finding has a durable route;
+- the exact final plan is review-hash-bound or has a mechanically verified metadata-only `final-plan-lock.md`, with no pending-review marker;
 - exact Task Contracts make the requested scope executable without conversation history;
 - `planning_readiness`, `implementation_readiness`, `planning_approval_state`, exact approval evidence, next stage, gates, and continuation value agree;
 - no product code, unrelated dirty path, secret, deployment, or unapproved external state was changed.
+- the terminal event references an immutable finalization manifest, all listed hashes still match, and the live state/handoff carry the returned terminal anchor without being terminal-event references.

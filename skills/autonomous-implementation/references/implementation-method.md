@@ -86,19 +86,22 @@ The worker first repeats physical containment and writes `evidence/I-###/worker-
 
 Workers never update `AGENT-STATE.md`, append `EVENTS.jsonl`, resolve their own UAT, accept their own stage, commit unless the exact contract and orchestrator authorize it, or perform an upstream redesign.
 
+After every readiness, implementation, repair, or integration return, the orchestrator captures the exact host terminal/return boundary in a new immutable `evidence/I-###/worker-return-attempt-###.md`. The receipt contains the packet-local monotonic attempt number, dispatch event and fresh worker identity, full subtree terminal status, prior receipt, `host_return_observed_at`, later `receipt_created_at`, canonical UTF-8 base64 return payload with derived line count/hash, and report/evidence hashes. The receipt disposition is only `return_observed`; final acceptance/rejection and final disposition are a later immutable event. Verify report/evidence stable mtimes and embedded completion times are no later than `host_return_observed_at`, then require `host_return_observed_at <= receipt_created_at <= worker_return_observed event time < final-disposition event time`. Reconcile dispatch count, receipt count, packet retry count, and session remediation count before acceptance or another dispatch.
+
 ## Independent automatic acceptance
 
 Treat the report as a claim. After the worker returns, the top-level orchestrator:
 
-1. re-resolves all written paths and proves physical containment;
-2. inventories repository/worktree changes and compares them with owned paths plus dirty baseline;
-3. opens the report and representative changed artifacts;
-4. checks the exact Task Contract remains current and no unauthorized side effect occurred;
-5. reruns required commands and inspects bounded relevant output, not only exit status;
-6. drives one representative affected user/system flow and records the observed result;
-7. for `[UI]`, inspects actual rendered behavior, functional state, accessibility signal where required, and screenshot/live URL evidence;
-8. records report/evidence/artifact/diff/flow observations in bounded evidence and events;
-9. changes status to `verified` only after every required signal passes.
+1. verifies the immutable `return_observed` receipt, terminal subtree, canonical bounded return bytes, report/evidence hashes, and lifecycle times;
+2. re-resolves all written paths and proves physical containment;
+3. inventories repository/worktree changes and compares them with owned paths plus dirty baseline;
+4. opens the report and representative changed artifacts;
+5. checks the exact Task Contract remains current and no unauthorized side effect occurred;
+6. reruns required commands and inspects bounded relevant output, not only exit status;
+7. drives one representative affected user/system flow and records the observed result;
+8. for `[UI]`, inspects actual rendered behavior, functional state, accessibility signal where required, and screenshot/live URL evidence;
+9. records receipt/report/evidence/artifact/diff/flow observations in bounded evidence and events;
+10. records final attempt disposition in a later immutable acceptance/rejection event and changes status to `verified` only after every required signal passes.
 
 A test suite that does not exercise the changed behavior, a screenshot without the accepted build/revision, or a worker-authored commit is insufficient. When required verification cannot be run, block or route; do not mark pass from code inspection.
 
@@ -114,7 +117,7 @@ On failure, persist:
 - `retry_count` and `remediation_cycles_this_session`;
 - rollback trigger and exact stage-owned checkpoint.
 
-Retry only after diagnosis, with one fresh repair worker constrained to the same contract/paths. At most two remediation cycles may target the same failure family. Compaction or restart does not reset the counter. A denied operation is not retried through alternate syntax.
+Retry only after diagnosis, a terminal `return_observed` receipt, and a later `non_accepted_retryable` event, with one fresh repair worker constrained to the same contract/paths. At most two remediation cycles may target the same failure family. Compaction or restart does not reset the counter. A denied operation is not retried through alternate syntax.
 
 Preserve useful safe work when the approach remains valid. Revert exact stage-owned changes only when the workspace is unsafe, the implementation violates the contract, or the approach is invalid and repair would compound harm. Never erase the failed report, evidence, event history, dirty baseline, or upstream route.
 

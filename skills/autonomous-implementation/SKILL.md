@@ -51,6 +51,7 @@ Run the orchestrator in the top-level session. If invoked inside a worker and th
 - Freeze only `Small`/1 or `Medium`/2 stages. `Large` is invalid and routes to Planning for splitting before dispatch.
 - Dispatch exactly one fresh state-changing implementation worker at a time and wait before accepting or dispatching another. Do not parallelize product writes, repairs, UAT-dependent work, or integration acceptance.
 - A worker receives the verbatim Task Contract, instruction paths, requested/effective model policy, exact allowed product and artifact writes, exact side effects, physical anchors, report/evidence targets, and at-most-ten-line return contract.
+- After every readiness, implementation, repair, or integration worker return, the orchestrator writes a new immutable `evidence/I-###/worker-return-attempt-###.md`. It records the attempt number, dispatch event and fresh worker identity, full subtree terminal status, exact `host_return_observed_at` boundary, canonical returned bytes/line count/hash, report/evidence hashes, and lifecycle-time checks. The pre-acceptance receipt records only `return_observed`; a later immutable acceptance/rejection event records final disposition. Packet prose or event summaries are not evidence that a worker was fresh, terminal, independent, artifact-first, or within ten lines.
 - Worker `done`, exit code alone, or a commit is not evidence. The orchestrator independently checks containment, scoped changes, representative outputs, required commands, and one real affected flow before `verified`.
 - Record pre-existing dirty paths with baseline/current hashes and bounded diffs. Never stage, overwrite, revert, or checkpoint unrelated user work.
 - Diagnose from actual evidence before remediation. Permit at most two evidence-driven remediation cycles for the same failure family and persist the family/counter across sessions.
@@ -107,7 +108,7 @@ For `[UI]`, request installed relevant design preferences: `design-taste-fronten
 
 ### 6. Independently accept or reject the stage
 
-After return, the orchestrator re-resolves every written target and checks:
+After return, capture the exact host terminal/return observation time, canonicalize the returned bytes by the state-template rule, and persist the immutable `return_observed` receipt. Every report/evidence stable mtime and embedded completion time must be no later than that host-return boundary; the receipt creation and `worker_return_observed` event follow it. Reconcile dispatch count, receipt count, packet retry count, and session remediation count. A contradictory lifecycle blocks acceptance rather than being backdated. The orchestrator then re-resolves every written target and checks:
 
 1. physical containment and exact changed-file scope;
 2. pre-existing dirty baseline/current hashes and bounded diffs;
@@ -117,7 +118,7 @@ After return, the orchestrator re-resolves every written target and checks:
 6. side effects against exact authority;
 7. for UI, functional/visual/accessibility behavior plus actual screenshot or live URL evidence.
 
-Append observation/sampling events and mark `verified` only after all required evidence passes. A worker-authored commit or self-review cannot accept its own stage.
+Append receipt observation and sampling events, then record the attempt's final `accepted`, `non_accepted_retryable`, or `non_accepted_terminal` disposition in a later immutable acceptance/rejection event. Mark `verified` only after all required evidence passes. A worker-authored commit or self-review cannot accept its own stage.
 
 ### 7. Diagnose and remediate bounded failures
 
@@ -159,6 +160,7 @@ Implementation is complete only when:
 - every `[UI]` stage has automatic visual evidence and durable human UAT approval before dependent work;
 - pre-existing dirty paths remain preserved and every checkpoint contains only authorized owned paths;
 - retry counters/failure families, model/capability fallbacks, session ceilings, and handoffs are honest;
+- every dispatched worker/reviewer has one immutable terminal `return_observed` attempt receipt plus a later immutable final-disposition event, dispatch/receipt/retry/remediation counts reconcile, and artifact/host-return/receipt/event times are monotonically observable;
 - a fresh integration reviewer has no unresolved critical finding;
 - `IMPLEMENTATION-NOTES.md`, state, gates, event anchor, repository state, and continuation agree;
 - no unapproved deploy, public/external effect, secret change, live migration, destructive reset, audit erasure, or unrelated edit occurred.

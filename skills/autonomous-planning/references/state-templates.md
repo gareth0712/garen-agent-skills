@@ -134,6 +134,14 @@ remediation_cycles_this_session: {0 | 1 | 2}
 
 `not_executed` is paired with `none_not_dispatched` only when preflight blocked before a worker ran; completed weight does not change.
 
+## Attempt accounting
+
+| packet | dispatch_count | terminal_receipt_count | accepted_attempt | retry_count | session_remediation_delta | reconciliation |
+|---|---:|---:|---:|---:|---:|---|
+| P-001 | {0..3} | {same as terminal dispatches} | {attempt number | none} | {max(0, dispatch_count - 1)} | {new dispatches after terminal non-accepted attempts} | {PASS | FAIL} |
+
+Every `worker_dispatched` event has exactly one immutable attempt-specific terminal receipt. A new dispatch for the same packet after a terminal non-accepted attempt increments packet `retry_count` and `remediation_cycles_this_session` exactly once. Preflight failures with no dispatch and side-effect-free command corrections inside one attempt increment neither count.
+
 ## Gates
 
 pre_implementation_blocking_gates:
@@ -171,7 +179,7 @@ blockers:
 
 Only the top-level orchestrator appends through the verified adapter. `AGENT-STATE.md` remains the sole control-plane index. Follow the complete byte/freeze/recovery contract in `artifact-protocol.md`.
 
-Each line is one object with monotonic `event_seq`, a fresh strictly increasing timezone-aware timestamp, `event_type`, stage `PLANNING`, optional valid `P-###` and statuses, actor `top_level_orchestrator`, existing local references with actual lowercase SHA-256, bounded evidence summary, `previous_event_sha256`, and canonical `event_sha256`. Never edit/rewrite/truncate an existing stream.
+Each line is one object with monotonic `event_seq`, a fresh strictly increasing timezone-aware timestamp, `event_type`, stage `PLANNING`, optional valid `P-###` and statuses, actor `top_level_orchestrator`, existing local references with actual lowercase SHA-256, bounded evidence summary, `previous_event_sha256`, and canonical `event_sha256`. Never edit/rewrite/truncate an existing stream. A referenced path/version becomes immutable at those exact bytes; a later update uses a new versioned path and later event.
 
 CLI/reference validation occurs before freezing. The helper then arms `EVENTS.FROZEN` before actual-prefix read, validates the chain and durable accepted count/tip/file digest, appends once, proves byte/chain postconditions, returns the next accepted anchor, and only then removes the marker. Malformed/partial/chain-invalid streams and anchor mismatches remain frozen. This detects history inconsistent with the durable accepted anchor; it does not resist rewriting both stream and every anchor.
 
@@ -182,7 +190,9 @@ python {absolute-skill-root}/scripts/append_event.py --self-test --run-root {abs
 python {absolute-skill-root}/scripts/append_event.py --run-root {absolute-run-root} --stage PLANNING --event-type {event_type} --packet-id {P-###} --from-status {status} --to-status {status} --reference {portable/existing/path} --evidence-summary {bounded summary} --expected-event-count {events_accepted_count} --expected-event-tip {events_accepted_tip} --expected-events-sha256 {events_accepted_file_sha256}
 ```
 
-After success, persist returned `accepted_event_count`, `accepted_event_tip`, and `accepted_events_sha256` before another append. Append the protocol-required lifecycle events. A verified transition is invalid without earlier passing post-write containment, report/evidence observation, and orchestrator artifact sampling events. Any append failure or remaining `EVENTS.FROZEN` stops later appends and triggers the protocol's bounded predecessor closure plus distinct successor run.
+After success, persist returned `accepted_event_count`, `accepted_event_tip`, and `accepted_events_sha256` before another append. Append the protocol-required lifecycle events. A verified transition is invalid without earlier passing post-write containment, worker-return receipt, report/evidence observation, and orchestrator artifact sampling events. The observation event timestamp must be later than the receipt and every observed artifact's stable mtime/embedded completion time. Any append failure or remaining `EVENTS.FROZEN` stops later appends and triggers the protocol's bounded predecessor closure plus distinct successor run.
+
+For terminal finalization, freeze artifacts first, write and verify `evidence/finalization-manifest.md`, and reference only that immutable manifest/frozen versioned evidence from the terminal event. Update live `AGENT-STATE.md` and `SESSION-HANDOFF.md` with the returned terminal anchor afterward; never include either mutable index as a terminal-event reference.
 
 ## `SCOPE.md`
 
@@ -266,6 +276,26 @@ The approval mapping binds to this exact planning revision, requested execution 
 - Architecture summary: {bounded system design}
 - Key constraints/invariants: {evidence-backed list}
 - Rejected alternatives: {alternative and evidence-based reason}
+
+## System design scenario matrix
+
+Omit this entire section when activation evidence is absent. When present, it must cover all three profiles and every applicable domain.
+
+- Activation evidence kind: {explicit_request | discovery_trigger}
+- Activation evidence alternative: {explicit_request: current request path/revision, current-scope mapping, requested dimension, material_trigger: none_not_required | discovery_trigger: current Discovery/equivalent path/revision, current-scope mapping, one named material trigger}
+- User metric: {registered users | MAU | DAU | concurrent users | other defined metric | unknown with validation action}
+- Workload/risk envelope: {known values, explicit assumptions, falsification methods, and thresholds}
+- Shared correctness/security/privacy/safety invariants: {requirements that remain identical across all three profiles and evidence that no profile weakens them}
+- `recommended_current_profile`: {Small / Baseline | Medium / Growth and HA | Enterprise / High-scale or mission-critical}
+- Recommendation evidence: {dominant constraints and rejected alternatives}
+
+| profile | domain | disposition | architecture delta/evidence | owner | `validation_action` | `upgrade_trigger` | `decision_deadline` |
+|---|---|---|---|---|---|---|---|
+| {profile} | {domain} | {required | not_applicable | deferred} | {bounded evidence} | {owner | none_when_not_applicable} | {action | none_when_not_applicable} | {measurable trigger | none_when_not_applicable} | {deadline | none_when_not_applicable} |
+
+- Transition, compatibility, migration/backfill, rollback/recovery: {bounded path between relevant profiles}
+- Current execution request for future-profile work: {path, revision, authority, and explicitly named profiles | none_not_authorized}
+- Authorized implementation profile: {current profile only unless the current execution-request field above contains complete explicit authorization}
 
 ## Repository evidence and inherited assumptions
 
@@ -431,6 +461,43 @@ If preflight blocks, do not dispatch; use `not_executed`, `none_not_dispatched`,
 Repeat physical containment, write the progress marker before analysis, then write the full reusable report/evidence. Return at most ten lines: verdict, report/evidence/changed paths, one-line verification, and blocker/next action. Never include chain-of-thought, secrets, transcripts, or raw logs.
 ```
 
+## `evidence/P-###/worker-return-attempt-###.md`
+
+The top-level orchestrator creates this after the host reports the worker terminal. It is acceptance evidence, not a worker-authored report.
+
+```markdown
+# Worker Return Receipt
+
+packet_id: P-{sequence}
+attempt_number: {packet-local integer starting at 1}
+worker_dispatched_event_seq: {matching event sequence}
+worker_identity: {fresh host worker ID/name}
+host_terminal_status: {completed | failed | blocked | interrupted}
+attempt_disposition: {accepted | non_accepted_retryable | non_accepted_terminal}
+prior_attempt_receipt: {worker-return-attempt-NNN.md | none_first_attempt}
+dispatch_count_after_attempt: {integer}
+packet_retry_count_after_attempt: {integer}
+session_remediation_cycles_after_attempt: {integer}
+observed_at: {strictly increasing ISO-8601 timestamp from the orchestrator}
+line_count: {integer 0..10}
+return_sha256: {lowercase 64-hex of the exact bounded return text}
+report_path: reports/P-{sequence}-report.md
+report_sha256: {lowercase 64-hex}
+evidence_paths_and_sha256:
+- {path}: {lowercase 64-hex}
+
+## Bounded returned text
+
+{exact returned lines, at most ten; no hidden reasoning or transcript}
+
+## Temporal checks
+
+- Report/evidence existed before `observed_at`: {PASS | FAIL with path}
+- Stable mtimes and embedded completion times are not later than observation: {PASS | FAIL with path/time}
+- Full agent subtree terminal before next dispatch: {PASS | FAIL with observed identities/statuses}
+- Dispatch count, immutable receipt count, packet retry count, and session remediation count reconcile: {PASS | FAIL with counts}
+```
+
 ## `reports/P-###-report.md`
 
 Create only after a worker actually ran. For `final_review`, include the severity table; for other packet kinds remove that section and record why.
@@ -520,6 +587,56 @@ resolution_evidence: {path/revision | pending}
 ```
 
 Operational gates do not manufacture a product question; human product/authority/security decisions are not mislabeled operational.
+
+Before opening a human gate, cite the accepted upstream ownership field and the exact boundary exceeded. If upstream framing delegates the decision category and the proposed least-privilege mechanism stays inside its outcomes, constraints, non-goals, and side-effect ceiling, keep the decision in Planning; a security label alone is not a gate justification.
+
+## `evidence/final-plan-lock.md`
+
+```markdown
+# Final Plan Lock
+
+reviewed_candidate_path: {immutable candidate path}
+reviewed_candidate_sha256: {lowercase 64-hex reviewed by P-###}
+final_plan_path: MASTER-PLAN.md
+final_plan_sha256: {lowercase 64-hex}
+review_report_path: reports/P-{review}-report.md
+review_report_sha256: {lowercase 64-hex}
+allowed_post_review_change: review disposition metadata only
+mechanical_diff_check: {PASS with bounded changed headings/lines | FAIL}
+pending_review_marker_count: 0
+semantic_change_detected: no
+```
+
+Any non-metadata change or pending-review marker invalidates the lock and requires a fresh independent review.
+
+## `evidence/finalization-manifest.md`
+
+Write once after all listed artifacts are frozen and before the terminal event. Do not list mutable `AGENT-STATE.md` or `SESSION-HANDOFF.md`.
+
+```markdown
+# Planning Finalization Manifest
+
+manifest_revision: {stable revision}
+created_at: {ISO-8601 timestamp}
+final_route: {DISCOVERY | PLANNING | IMPLEMENTATION | STOP}
+planning_readiness: {ready | not_ready | stale}
+implementation_readiness: {ready | not_ready | stale}
+planning_approval_state: {not_requested | delegated_execution_authority | approval_required | explicitly_approved}
+frozen_artifacts:
+- path: MASTER-PLAN.md
+  sha256: {lowercase 64-hex}
+  stable_mtime: {ISO-8601}
+- path: evidence/final-plan-lock.md
+  sha256: {lowercase 64-hex}
+  stable_mtime: {ISO-8601}
+- path: {each final review/verification/response/versioned worker-return attempt artifact; one entry per frozen path}
+  sha256: {lowercase 64-hex}
+  stable_mtime: {ISO-8601}
+hash_recheck: PASS
+temporal_order_check: PASS
+```
+
+The terminal event references this manifest. After append, only the live state/handoff anchor/index fields may change; a change to any manifest-listed path requires a new versioned manifest and later event.
 
 ## `SESSION-HANDOFF.md`
 

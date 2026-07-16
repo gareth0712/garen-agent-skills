@@ -12,7 +12,7 @@ Before dispatch, declare a durable progress marker, the next bounded milestone t
 | `Medium` | 2 | One outcome across at most two coupled subsystems with integration-level consistency verification. |
 | `Large` | invalid | Multiple outcomes, three or more coupled subsystems, an unknown interface, unbounded verification, or a plan that cannot be accepted independently. Split before dispatch. |
 
-Only Small/1 and Medium/2 are dispatchable. Do not relabel Large as Medium to fit a session.
+Only Small/1 and Medium/2 are dispatchable. Do not relabel Large as Medium to fit a session. Apply the same rubric to every final implementation Task Contract from its actual outcomes, coupled subsystems, and independent verification boundaries; a `Small` or `Medium` label never overrides Large contents.
 
 ## Dependency ordering
 
@@ -38,7 +38,7 @@ The ceiling is a maximum, never a target. Stop earlier after the current unit wh
 
 - host-reported context usage reaches at least 50%;
 - compaction occurred;
-- two remediation cycles were needed in the session;
+- two orchestrator-authorized packet remediation cycles were needed in the session;
 - the next action cannot be selected from `AGENT-STATE.md` plus the current report alone;
 - a human, external, authority, or stage-routing gate is pending.
 
@@ -47,6 +47,8 @@ When telemetry is absent, record `unavailable`; artifact and weight ceilings sti
 ## Retry and liveness circuit breaker
 
 For failure or contradiction, inspect the actual report/evidence, write a bounded diagnosis, preserve useful artifacts, and change one falsifiable variable or repair the contract. Retry at most twice for the same packet. A repeated denial is not retried with alternate syntax. After the second unsuccessful remediation, set `blocked`, open the correct gate/route, and hand off when needed.
+
+A remediation cycle is any actual new worker dispatch for the same packet after a prior worker reached a terminal non-accepted disposition, whether or not the orchestrator used the word “rejected.” Increment exactly once at that dispatch boundary and reconcile it with the versioned attempt receipts and packet retry count. A preflight failure with no dispatch and a side-effect-free local inspection-command correction inside the same attempt do not increment the counter; record the command error and final bounded signal instead. If the error requires a new worker dispatch, that new attempt is one remediation cycle.
 
 Worker `running` and chat assurance are not durable progress. Compare the declared marker/report/evidence leaves through host-supported waiting. Repeated no-change observations may trigger one completion-or-blocker request, but wait count alone cannot terminate work. End an attempt only at the predeclared exhaustion signal or a host hard failure/limit; preserve evidence and diagnose before retry.
 

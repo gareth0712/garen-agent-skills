@@ -9,6 +9,7 @@ Replace every brace-delimited value with observed run data before accepting an a
 - [`SCOPE.md`](#scopemd)
 - [`IMPLEMENTATION-NOTES.md`](#implementation-notesmd)
 - [`packets/I-###.md`](#packetsi-md)
+- [`evidence/I-###/worker-return-attempt-###.md`](#evidencei-worker-return-attempt-md)
 - [`reports/I-###-report.md`](#reportsi--reportmd)
 - [`gates/G-###.md`](#gatesg-md)
 - [`SESSION-HANDOFF.md`](#session-handoffmd)
@@ -189,7 +190,7 @@ python {absolute-skill-root}/scripts/append_event.py --self-test --run-root {abs
 python {absolute-skill-root}/scripts/append_event.py --run-root {absolute-run-root} --stage IMPLEMENTATION --event-type {event_type} --packet-id {I-###} --from-status {status} --to-status {status} --reference {portable/existing/path} --evidence-summary {bounded summary} --expected-event-count {events_accepted_count} --expected-event-tip {events_accepted_tip} --expected-events-sha256 {events_accepted_file_sha256}
 ```
 
-After success, persist returned accepted count/tip/file SHA-256 before another append. In addition to protocol lifecycle events, record readiness classification/routing, dirty inventory acceptance, contract freezing, diff/flow/UI sampling, remediation diagnosis, UAT open/resolution, checkpoint, integration review, and completion/handoff as bounded events. A failed append or remaining `EVENTS.FROZEN` triggers only the protocol's bounded predecessor closure and distinct successor run.
+After success, persist returned accepted count/tip/file SHA-256 before another append. In addition to protocol lifecycle events, record readiness classification/routing, dirty inventory acceptance, contract freezing, worker-return receipt observation, diff/flow/UI sampling, final attempt disposition, remediation diagnosis, UAT open/resolution, checkpoint, integration review, and completion/handoff as bounded events. A verified transition is invalid unless report/evidence times are no later than the host-return boundary, the immutable `return_observed` receipt and its observation event follow that boundary, and a later acceptance event records final disposition. A failed append or remaining `EVENTS.FROZEN` triggers only the protocol's bounded predecessor closure and distinct successor run.
 
 ## `SCOPE.md`
 
@@ -374,6 +375,51 @@ If preflight blocks, do not dispatch; use `not_executed`, `none_not_dispatched`,
 ## Worker report and return
 
 Repeat containment, write the progress marker before work, change only exact owned paths, then write full report/evidence before returning at most ten lines: verdict, report/evidence/changed paths, one-line verification, and blocker/next action. Do not include chain-of-thought, secrets, transcripts, or raw logs.
+```
+
+## `evidence/I-###/worker-return-attempt-###.md`
+
+The top-level orchestrator creates this only after the host reports the readiness, implementation, repair, or integration worker terminal. It is immutable return-observation evidence, not a worker-authored report and not final acceptance.
+
+Canonical return encoding is `canonical-utf8-base64-v1`: take the exact host return string, replace CRLF and lone CR with LF, remove all trailing LF characters, encode the resulting Unicode scalar sequence as UTF-8 without BOM, and store RFC 4648 standard base64. The SHA-256 is over those exact decoded bytes. `line_count` is 0 for an empty decoded string; otherwise it is one plus the number of LF bytes. The decoded canonical string must contain no terminal LF and at most ten lines. `return_text_display` is derived, non-authoritative convenience text.
+
+```markdown
+# I-{sequence} Worker Return Attempt {NNN}
+
+packet_id: I-{sequence}
+attempt_number: {positive packet-local integer}
+dispatch_event_seq: {worker_dispatched event sequence}
+worker_identity: {fresh host worker ID/name}
+host_terminal_status: {completed | failed | blocked | interrupted}
+full_subtree_terminal_status: {PASS with observed descendant identities/statuses | FAIL}
+attempt_state: return_observed
+prior_attempt_receipt: {worker-return-attempt-NNN.md | none_first_attempt}
+dispatch_count_after_attempt: {integer}
+packet_retry_count_after_attempt: {integer}
+session_remediation_cycles_after_attempt: {integer}
+host_return_observed_at: {timezone-aware ISO-8601 from the host terminal/return observation boundary}
+receipt_created_at: {timezone-aware ISO-8601 at or after host_return_observed_at}
+return_encoding: canonical-utf8-base64-v1
+return_base64: {RFC 4648 base64 of canonical UTF-8 bytes}
+line_count: {integer 0..10}
+return_sha256: {lowercase 64-hex of decoded canonical bytes}
+return_text_display: |
+  {decoded canonical pointer-only return; derived, non-authoritative}
+report_path: reports/I-{sequence}-report.md
+report_sha256: {lowercase 64-hex}
+evidence_hashes:
+- {portable evidence path}: {lowercase 64-hex}
+final_disposition_event: pending_at_receipt_creation
+
+## Temporal and reconciliation checks
+
+- Report/evidence existed before `host_return_observed_at`: {PASS | FAIL with path}
+- Stable mtimes and embedded completion times are not later than `host_return_observed_at`: {PASS | FAIL with path/time}
+- Canonical base64 decodes, SHA-256 and line_count recompute, no terminal LF remains, and line_count <= 10: {PASS | FAIL}
+- `host_return_observed_at <= receipt_created_at <= worker_return_observed event time`: {PASS | FAIL with times}
+- Full agent subtree terminal before another dispatch: {PASS | FAIL with identities/statuses}
+- Dispatch count, receipt count, packet retry count, and session remediation count reconcile before final disposition or another dispatch: {PASS | FAIL with counts}
+- Later immutable final disposition event: {accepted | non_accepted_retryable | non_accepted_terminal | pending_not_yet_accepted}
 ```
 
 ## `reports/I-###-report.md`
