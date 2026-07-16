@@ -1,7 +1,7 @@
 # Project Existence and Verifiability Gates Design
 
 **Date:** 2026-07-16
-**Status:** approved design, pending written-spec review
+**Status:** approved specification
 **Owner:** Project Discovery
 **Inspired by:** the supplied Software 3.0, jagged-intelligence, and agentic-engineering commentary. The source is inspiration, not an authority or acceptance oracle.
 
