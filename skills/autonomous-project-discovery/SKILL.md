@@ -83,7 +83,27 @@ Keep architecture candidates at the level needed to expose constraints or decisi
 
 Completion criterion: the problem and outcome are testable, scope has a stop boundary, and proposals are not presented as facts.
 
-### 5. Map and prioritize uncertainty
+### 5. Run the Product Existence Challenge
+
+For every greenfield product or substantial new subsystem at `targeted` or `full` depth, record `product_intent` as `production_commercial` or `learning_prototype`. When intent materially changes the route and remains unclear after evidence inspection, ask one focused question; never infer a learning bypass merely because work is small or called a side project.
+
+Production/commercial work compares the same representative raw inputs and requested outcomes with an observed direct-model baseline. Record the model/tool identity and date or `unavailable`, fixture paths/hashes, bounded workflow, output evidence, repeatability/manual steps, supported and unsupported claims, material product advantages, validation actions, and falsification conditions. No external execution, paid API, upload, credential, or model result is implied. If current authority or capability cannot produce the baseline, use `existence_gate_state: external_evidence`; never invent it. There is no universal prompt-count threshold.
+
+Material advantages may include persistent state, system-of-record/action integration, legitimate private context, repeatability, collaboration, privacy/offline constraints, auditability, safety/recovery, or measured economic value. Listing a dimension is not evidence.
+
+`learning_prototype` may use `existence_gate_state: bypassed_learning` only with a learning objective, non-commercial boundary, reason, bounded effects/time, and revisit trigger. The learning/prototype bypass applies only to product-existence justification; outcome verification remains mandatory. The bypass expires when its recorded production/commercial revisit trigger is reached.
+
+### 6. Run the Outcome Verifiability Challenge
+
+For every material outcome, persist a stable outcome ID, observable claim, oracle or human rubric, representative and adversarial fixtures, acceptable error without invented precision, deterministic failure classes, automatic verification signal, human boundary, rollback/recovery, falsification condition, owner, and deadline. Never label a human-only judgment automatically verified. If neither an oracle nor a specific human rubric exists, use `verifiability_gate_state: insufficient`.
+
+For missing production/commercial evidence, inspect observable evidence first and ask one sharp decision-unlocking question at a time. Persist the decision, why it is material, required evidence, answer or non-answer, and never repeat a substantively answered question. Questions challenge the product hypothesis without pressuring the user toward approval. Continue until every current-scope material claim is evidenced, falsifiable, or owned; the user explicitly overrides; or a genuine external blocker remains. After an explicit override, stop re-litigating the same gate.
+
+Derive `product_justification_state` independently from `discovery_readiness`: `approved`, `blocked`, `user_directed_unapproved`, or `bypassed_learning`. `approved` requires both gates to pass. A failed or unavailable production/commercial gate is `blocked` and `not_ready` unless the user explicitly overrides. An exact user insistence may set `user_directed_unapproved` and permit Planning readiness when all other framing is complete, but every downstream handoff preserves the failed claims, exact override scope, and non-endorsement. `bypassed_learning` may be ready only when outcome verification passes. Routine `skip` work does not activate either gate.
+
+Completion criterion: the two gate-local states, aggregate state, evidence revision, every material outcome row, and any exact override or learning-bypass boundary are mutually consistent and durable.
+
+### 7. Map and prioritize uncertainty
 
 Classify retained items with the four exact unknown classes. Search for project-specific blind spots rather than claiming exhaustive unknown-unknown coverage. Give every item a `decision_unlocked`, owner, and allowed disposition.
 
@@ -91,7 +111,7 @@ Use one focused user question only when a material decision cannot be resolved s
 
 Completion criterion: every remaining uncertainty is connected to a decision, owner, and stopping disposition.
 
-### 6. Decompose bounded packets
+### 8. Decompose bounded packets
 
 Create sequential `D-###` packets for only the inspections, framing challenges, research, or prototypes still needed. Each packet has one primary outcome, explicit inputs, `decision_unlocked`, Small/1 or Medium/2 sizing, dependencies, observable completion, verification, and fallback. Split every Large unit before dispatch.
 
@@ -99,7 +119,7 @@ Independent read-only scouts may run in parallel only when their outputs are iso
 
 Completion criterion: every pending packet is dispatchable without depending on a later packet, and the next packet fits the session budget.
 
-### 7. Resolve and accept one packet
+### 9. Resolve and accept one packet
 
 Before dispatch, preflight every required input, capability, authority, dependency, and path anchor. The top-level orchestrator resolves and records lexical and physical/canonical roots, walks existing target components with no-follow metadata, and validates every read/write target against an allowed physical root. For an uncreated target it resolves the nearest existing ancestor, proves that ancestor is contained, rejects a symlink, junction, mount, or Windows reparse traversal, then creates/re-resolves only required directory components and leaves the assigned file leaf for its authorized writer. A string-prefix or lexical-only comparison is never proof. If the host cannot establish these facts, do not dispatch.
 
@@ -111,7 +131,7 @@ The worker writes reusable artifacts first. Before accepting them, the top-level
 
 Completion criterion: the packet is `verified`, `blocked`, or `superseded` with inspectable evidence and an explicit next action.
 
-### 8. Assess Planning readiness
+### 10. Assess Planning readiness
 
 Write exactly one summary line in `DISCOVERY.md`: `Planning readiness: READY` or `Planning readiness: NOT_READY`.
 
@@ -127,7 +147,7 @@ Discovery readiness means the problem/outcome are clear, scope is bounded, prima
 
 Completion criterion: the readiness value, evidence, blocker list, and route agree across `DISCOVERY.md` and `AGENT-STATE.md`.
 
-### 9. Finish, route, or hand off
+### 11. Finish, route, or hand off
 
 Use these testable routes:
 
@@ -155,6 +175,9 @@ Discovery is complete only when:
 
 - canonical `AGENT-STATE.md`, `SCOPE.md`, and `DISCOVERY.md` are current and mutually consistent;
 - the depth gate and territory evidence are recorded;
+- qualifying work records product intent, both gate-local states, the aggregate product-justification state, and revisioned evidence;
+- every material outcome has the canonical verifiability row or is explicitly insufficient;
+- exact user override or bounded learning-bypass evidence and its non-endorsement/revisit boundary propagate to the handoff;
 - facts, assumptions, proposals, and rejected framings are distinguishable;
 - retained unknowns use the exact class/owner/disposition contract;
 - every retained packet/report/evidence artifact has been sampled by the orchestrator;

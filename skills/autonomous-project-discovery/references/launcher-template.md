@@ -8,6 +8,7 @@ Use `autonomous-project-discovery` to run bounded, artifact-driven Discovery fro
 Goal:
 - Desired outcome: {describe the problem or idea to frame}
 - Why now / evidence: {known evidence, or "not yet established"}
+- Product intent: {production_commercial | learning_prototype | determine from one focused question after evidence inspection}
 
 Scope:
 - In scope: {bounded product, repository, or subsystem}
@@ -20,6 +21,9 @@ Authority and external effects:
 - Network research: read-only and bounded to a named decision; otherwise disabled
 - Credentials, secrets, destructive changes, deployment, publishing, purchases, messages, and public actions: not authorized
 - Material product, legal, security, expensive, or hard-to-reverse decisions: require explicit approval
+- Direct-model baseline authority: read-only local evidence only; external model/API execution requires separately recorded authority
+- User override policy: if I explicitly insist after an insufficient gate, continue as `user_directed_unapproved`; preserve the failed claims and never call the project approved
+- Learning/prototype bypass policy: bypass product-existence justification only with a learning objective, non-commercial boundary, bounded effects/time, and revisit trigger; outcome verification remains mandatory
 
 Checkpoint policy:
 - Commit policy: do not commit unless I explicitly authorize a path-limited checkpoint

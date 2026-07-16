@@ -18,7 +18,7 @@ Replace every brace-delimited value with observed run data before accepting an a
 
 Only the top-level orchestrator writes this file.
 
-`discovery_readiness` is this Discovery artifact's handoff/entry readiness for Planning. It alone derives the `DISCOVERY.md` line: `ready` => `Planning readiness: READY`; `not_ready` or `stale` => `Planning readiness: NOT_READY`. `planning_readiness` instead describes an actual Planning artifact's downstream readiness and remains `not_assessed` until Planning exists.
+`discovery_readiness` is this Discovery artifact's handoff/entry readiness for Planning. It alone derives the `DISCOVERY.md` line: `ready` => `Planning readiness: READY`; `not_ready` or `stale` => `Planning readiness: NOT_READY`. `planning_readiness` instead describes an actual Planning artifact's downstream readiness and remains `not_assessed` until Planning exists. The product-justification fields are required only when the two challenges activate; omit that complete section for `skip` work and record the inactive route in depth evidence.
 
 ```markdown
 # Agent State
@@ -85,6 +85,23 @@ discovery_readiness: {ready | not_ready | stale}
 planning_readiness: not_assessed
 implementation_readiness: not_assessed
 next_stage: {DISCOVERY | PLANNING | STOP}
+
+## Product justification
+
+product_intent: {production_commercial | learning_prototype}
+existence_gate_state: {approved | insufficient | external_evidence | bypassed_learning}
+verifiability_gate_state: {approved | partial | insufficient}
+product_justification_state: {approved | blocked | user_directed_unapproved | bypassed_learning}
+product_justification_evidence:
+  path: {evidence path}
+  revision: {stable revision or digest}
+  observed_at: {timezone-aware ISO-8601}
+user_override_evidence:
+  path: {durable request/gate path | none}
+  revision: {stable revision | none}
+  authority: {user/product authority | none}
+  exact_scope: {continued scope | none}
+revisit_trigger: {measurable condition | none}
 
 ## Artifact lineage
 
@@ -252,6 +269,51 @@ updated_at: {ISO-8601 timestamp}
 | blast_radius | {finding} | {evidence} |
 | irreversibility | {finding} | {evidence} |
 | artifact_freshness | {finding} | {evidence} |
+
+## Product intent and justification state
+
+- Product intent: {production_commercial | learning_prototype}
+- Existence gate state: {approved | insufficient | external_evidence | bypassed_learning}
+- Verifiability gate state: {approved | partial | insufficient}
+- Product justification state: {approved | blocked | user_directed_unapproved | bypassed_learning}
+- Evidence path/revision/observed at: {path, stable revision or digest, timezone-aware ISO-8601}
+- Discovery endorsement boundary: {endorsed for current scope | user-directed continuation without endorsement | bounded learning only | blocked}
+
+## Direct-model baseline and durable value evidence
+
+- Model/tool and observed date: {identity and date | unavailable with exact capability/authority gap}
+- Same representative inputs/outcomes: {fixture paths or hashes and bounded requested outcomes}
+- Direct workflow and output evidence: {steps, evidence hashes | not_executed with reason}
+- Observed result/manual steps/repeatability/uncertainty: {bounded facts}
+- Supported and unsupported claims: {claims separated by evidence}
+
+| claimed durable advantage | evidence | validation action | falsification condition |
+|---|---|---|---|
+| {persistent state, integration, private context, repeatability, collaboration, privacy/offline, audit/safety/recovery, or measured economic value} | {path/revision or insufficient} | {bounded observable action} | {condition overturning claim} |
+
+## Outcome verifiability matrix
+
+| outcome_id | claim | oracle_or_metric | representative_fixtures | adversarial_fixtures | acceptable_error | failure_classes | automatic_verification | human_boundary | rollback_recovery | falsification_condition | owner_deadline |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| {stable ID} | {observable outcome} | {oracle/metric or explicit human rubric} | {paths/hashes/construction} | {boundary/misuse/degraded/counterexample cases} | {evidence-backed envelope} | {stable deterministic categories} | {command/check/planned signal or none_human_only} | {who decides what and when} | {rollback/recovery/containment point} | {evidence overturning claim} | {owner and exact boundary} |
+
+## Sharp questions, answers, and rejected framings
+
+| decision unlocked | why material | evidence or choice required | answer/non-answer | disposition |
+|---|---|---|---|---|
+| {one highest-impact unresolved decision} | {readiness/product effect} | {specific evidence or bounded choice} | {durable answer or no_answer} | {resolved | gate path | explicit override} |
+
+- Rejected framing: {specific framing and evidence-based reason}
+
+## Override or learning-bypass evidence
+
+- Evidence type: {none | user_override | learning_bypass}
+- Evidence path/revision: {durable path and stable revision | none}
+- Authority and exact continued scope: {user/product authority and bounded scope | none}
+- Concrete failed/insufficient claims preserved: {claims | none}
+- Non-endorsement/effect boundary: {boundary | none}
+- Learning objective/non-commercial boundary/reason/time-effect limits: {record | none}
+- Revisit trigger: {measurable production/commercial trigger | none}
 
 ## Stakeholders, users, and outcomes
 
@@ -573,6 +635,15 @@ restart_mode: {manual | host-confirmed automatic action}
 - `completed_weight` / `session_budget`: {number} / {6 or 4}
 - Representative artifacts inspected: {paths and observed signals}
 - Accepted event anchor: count {events_accepted_count}, tip {events_accepted_tip}, file SHA-256 {events_accepted_file_sha256}, accepted at {events_anchor_updated_at}
+
+## Product justification handoff
+
+- product_justification_state: {approved | blocked | user_directed_unapproved | bypassed_learning | omitted_for_skip}
+- product_justification_evidence: {path, stable revision or digest, observed_at | omitted_for_skip}
+- failed/insufficient claims: {concrete claims | none | omitted_for_skip}
+- override or bypass boundary: {authority, exact scope, non-endorsement or learning boundary | none | omitted_for_skip}
+- effect-blocking gates: {gate paths and prohibited effects | none | omitted_for_skip}
+- revisit_trigger: {measurable condition | none | omitted_for_skip}
 
 ## Active or blocked state
 

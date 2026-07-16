@@ -40,6 +40,46 @@ Maintain co-located sections for:
 
 Challenge solution-first requests. Compare the requested solution with a simpler validation path, an existing tool, a smaller experiment, a separated product, or a different framing when evidence makes that credible. Be direct about contradictions and excessive scope. Discovery may state design constraints or compare alternatives only far enough to frame a later decision; Planning selects architecture, interfaces, data models, milestones, and detailed verification.
 
+## Product existence and outcome verifiability
+
+Activate both challenges for greenfield products and materially ambiguous substantial new subsystems at `targeted` or `full` depth. Do not activate them for `skip` work. Record `product_intent` as `production_commercial` or `learning_prototype`; if intent remains materially ambiguous after evidence inspection, ask one focused question. Project size, a side-project label, or low initial user count is not evidence of learning intent.
+
+### Direct-model baseline and durable value
+
+For `production_commercial`, compare the proposed workflow with a Direct-model baseline using the same representative raw inputs and requested outcomes. Persist:
+
+- observed model/tool identity and date, or `unavailable` plus the exact capability/authority gap;
+- reproducible fixture paths or hashes, bounded direct workflow, and output/evidence hashes when execution is authorized;
+- observed success/failure, manual steps, repeatability, uncertainty, and supported/unsupported claims;
+- each claimed product advantage, its validation action, and its `falsification_condition`.
+
+Current authority never implies a paid API, external account, credential, upload, or public effect. When the baseline cannot be observed within authority, record `existence_gate_state: external_evidence`; absence of evidence is neither success nor failure evidence. Never synthesize a baseline from model reputation or a named researcher's view. A fixed prompt count may be a recorded warning signal but is not a universal approval threshold.
+
+A production/commercial pass requires evidence of at least one material advantage appropriate to the outcome. Candidate dimensions are persistent state/longitudinal workflow, system-of-record or action integration, legitimately accessed private context, repeatability/automation/operator effort, collaboration/role coordination, privacy/offline/residency/data minimization, audit/compliance/safety/recovery, or measured quality/latency/reliability/economic improvement. A label without observed evidence and a falsification condition remains insufficient.
+
+For `learning_prototype`, `existence_gate_state: bypassed_learning` requires a learning objective, non-commercial boundary, reason the reproduction serves that objective, bounded time/effects, and a measurable production/commercial revisit trigger. The bypass expires at that trigger. It never bypasses the outcome challenge.
+
+### Outcome rows and sharp questions
+
+Create one row per material outcome with these exact fields: `outcome_id`, `claim`, `oracle_or_metric`, `representative_fixtures`, `adversarial_fixtures`, `acceptable_error`, `failure_classes`, `automatic_verification`, `human_boundary`, `rollback_recovery`, `falsification_condition`, and `owner_deadline`. The row frames observable acceptance; Planning still owns detailed test architecture and implementation sequencing.
+
+An outcome without a credible automatic oracle may use a specific human rubric naming who judges, when, and how disagreement is handled. It may not be labeled automatically verified. If neither an oracle nor a specific rubric exists, set `verifiability_gate_state: insufficient`; use `partial` when only a proper subset of material outcomes passes.
+
+For a missing production/commercial claim, inspect evidence first and ask exactly one sharp decision-unlocking question at a time. Record the decision unlocked, why it is material, evidence/choice required, and answer or non-answer. Do not repeat a substantively answered question or pressure the user toward approval. Stop asking about the same failed gate after an explicit override; preserve the result instead.
+
+### Aggregate state and readiness
+
+Derive `product_justification_state` separately from `discovery_readiness`:
+
+| aggregate state | required gate facts | readiness effect |
+|---|---|---|
+| `approved` | `production_commercial`; existence and verifiability are both `approved` | May be `ready` when the ordinary rubric also passes |
+| `blocked` | A production/commercial material claim is insufficient/unavailable, or any required outcome remains partial/insufficient, with no exact override | Must be `not_ready` |
+| `user_directed_unapproved` | The authorized user explicitly insists on a named continuation scope after a failed/insufficient gate | May be `ready` when other framing passes; preserve failed claims and non-endorsement |
+| `bypassed_learning` | The bounded learning record passes and verifiability is `approved` | May be `ready`; gives no production/commercial endorsement |
+
+`ready + user_directed_unapproved` means the product is framed well enough for Planning under the user's exact override; it does not mean Discovery endorses building it. `bypassed_learning` bypasses only commercial existence justification and still requires an approved verifiability gate. Every readiness route carries the aggregate state, evidence revision, override/bypass boundary, failed claims, effect-blocking gates, and revisit trigger.
+
 ## Four unknown classes
 
 Classify every retained item with exactly one value:
