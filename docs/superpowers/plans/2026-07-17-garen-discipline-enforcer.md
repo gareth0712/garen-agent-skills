@@ -176,12 +176,16 @@
 - Modify: `C:\Users\garet\sync-setup\bootstrap\capabilities.yaml`
 - Modify: `C:\Users\garet\sync-setup\README.md`
 - Create when native hooks are unavailable: `C:\Users\garet\sync-setup\.githooks\discipline-pre-commit.mjs`
+- Modify when native hooks are unavailable: `C:\Users\garet\sync-setup\.githooks\pre-commit`
+- Create: `S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer\tests\codex-fallback.test.mjs`
 
 - [ ] In a new Codex task where `codex plugin` is executable, scaffold/validate the smallest native plugin with the official `plugin-creator` scripts and confirm whether hook execution is actually supported.
 - [ ] If native Codex hooks are unsupported, do not create the two Codex files above. Install a tracked Git adapter that invokes the shared plugin policy modules from the manifest-owned custom skills checkout for staged diff/protected-file/review-evidence gates; keep edit/delegation policy in Codex AGENTS/rules and label it advisory, not mechanically enforced.
+- [ ] Wire `.githooks/pre-commit` as a fail-closed dispatcher: run preference `check --staged` first, then `node sync-setup/.githooks/discipline-pre-commit.mjs`; the adapter resolves the custom repo from compiled bootstrap manifest and invokes `hooks/runner.mjs git-pre-commit`. Preserve and propagate the first non-zero exit code.
 - [ ] Add a provider-neutral `record-review` CLI that accepts the current diff hash and a real review artifact path, validates both, and stores only their hashes. The Git adapter rejects stale/missing review evidence after production edits; it never accepts a plain assistant claim.
 - [ ] If supported, build a thin adapter that invokes the same deterministic policy modules; do not duplicate policies or put Claude hook fields into an invalid Codex manifest.
 - [ ] Add the accepted plugin identity/version and adapter status to bootstrap, then verify install/check/rollback from a fresh task.
+- [ ] In a temporary Git fixture, prove the real dispatcher blocks a protected file and an oversized staged diff, rejects stale review evidence, accepts matching `record-review` evidence, and still runs the preference gate. Assert the invocation appears exactly once in the installed dispatcher.
 - [ ] Put the plugin source, install commands, provider support matrix, state/rollback paths, and limitations in the root recovery README.
 - [ ] Commit in each repository separately: `feat(discipline): add accepted Codex adapter` only if proven; otherwise `docs(discipline): record Codex enforcement boundary`.
 
@@ -190,12 +194,13 @@
 ```powershell
 $pluginRoot = "S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer"
 $tests = @(Get-ChildItem "$pluginRoot\tests" -Filter "*.test.mjs" -File)
-if ($tests.Count -lt 8) { throw "Expected at least 8 discipline test files; found $($tests.Count)." }
+if ($tests.Count -lt 9) { throw "Expected at least 9 discipline test files; found $($tests.Count)." }
 node --test $tests.FullName
 claude plugin validate --strict "S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer"
 claude plugin validate --strict "S:\git\15-skills\garen-agent-skills"
 claude plugin list --json
 git -C "S:\git\15-skills\garen-agent-skills" diff --check -- .claude-plugin plugins/garen-discipline-enforcer docs/superpowers/plans/2026-07-17-garen-discipline-enforcer.md
+Select-String -Path "C:\Users\garet\sync-setup\.githooks\pre-commit" -Pattern "discipline-pre-commit.mjs"
 ```
 
 Expected: all deterministic tests pass; strict validation passes; Claude lists `garen-discipline-enforcer@garen-agent-skills` enabled at user scope; real acceptance evidence covers all six Claude gates; unrelated dirty files in the custom skills repo are not staged or modified. Codex support is labelled either native-hook accepted or fallback accepted; fallback acceptance must prove staged Git/review gates and explicitly mark built-in edit interception unavailable.
