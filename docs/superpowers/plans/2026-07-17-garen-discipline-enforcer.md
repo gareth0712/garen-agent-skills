@@ -4,11 +4,20 @@
 
 **Goal:** Turn Gareth’s key execution rules into observable Claude Code guardrails, with shared deterministic scripts that can later receive a Codex adapter without pretending the current Codex plugin runtime supports Claude hooks.
 
-**Architecture:** Build a repository-owned Claude Code marketplace plugin first. One Node hook runner parses stdin JSON and updates per-session state outside the repository. Small policy modules enforce edit authorization, affected checks, sensitive-path review, abnormal Git changes, completion review, and session/repeated-error reminders. Bootstrap owns installation; the plugin repo owns source.
+**Architecture:** Build a repository-owned Claude Code marketplace plugin first. One Node hook runner parses stdin JSON and updates per-session state outside the repository. Small policy modules enforce edit authorization, affected checks, sensitive-path review, abnormal Git changes, contextual decision requests, completion review, and session/repeated-error reminders. Bootstrap owns installation; the plugin repo owns source.
 
 **Tech Stack:** Claude Code plugin marketplace, Node.js 18+ ESM, built-in `node:test`, Git, pnpm-aware command discovery.
 
 **Provider boundary:** The first accepted artifact is a Claude Code plugin under `.claude-plugin`, because `claude plugin validate/install` is executable and the approved inventory manages Claude enabled plugins. Do not add `hooks` to a native `.codex-plugin/plugin.json`: the installed Codex validator guidance conflicts on that field and `codex.exe` is currently not executable from this shell. Codex support requires a separate acceptance spike; if native hooks are unavailable, Git gates remain mechanical while edit/delegation guidance is advisory because Codex currently exposes no interception point for built-in file-write tools.
+
+## Global Constraints
+
+- Apply the approved four-way question taxonomy with the same canonical tokens as the preference engine: `discoverable-fact` is investigated, reversible low-risk `agent-owned-choice` is handled autonomously, `consequential-decision` receives the full contract, and `undiscoverable-clarification` stays concise but contextual.
+- Mechanically block only high-confidence structural violations. Do not pretend a deterministic hook can perfectly judge whether a decision is consequential, whether background is sufficient, or whether a recommendation is correct.
+- A consequential decision request must be understandable with zero assumed prior context and contain Decision, Why now, Background, Concrete example, Options, Recommendation, Default or deferral, and Reply format. Every option covers outcome, benefits, drawbacks/risks, reversibility, and relevant implementation/ongoing cost.
+- A recommendation states assumptions and the strongest reasonable counterargument. It never constitutes user approval.
+- Normal factual questions, autonomous low-risk choices already taken, and contextual Quiz-me questions must not be blocked as decision requests.
+- Web and desktop ChatGPT have no local Claude Stop hook. Their generated preferences and evals carry the intent, but only providers with a proven output interception point may claim mechanical decision enforcement.
 
 ---
 
@@ -140,7 +149,32 @@
 - [ ] Test new edits after review invalidate old evidence, review of a different diff, no Git repo, docs-only edit, and two-block circuit breaker.
 - [ ] Commit: `feat(discipline): enforce reviewed completion`.
 
-## Task 8: Persist session-boundary and repeated-error reminders
+## Task 8: Reject obvious non-compliant decision requests
+
+**Files:**
+- Create: `S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer\hooks\policies\decision-request.mjs`
+- Create: `S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer\tests\decision-request.test.mjs`
+- Create: `S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer\tests\fixtures\decision-requests\`
+- Modify: `S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer\hooks\hooks.json`
+
+**Stop policy boundary:** Parse the latest assistant message structurally from the transcript. This policy catches obvious formatting failures; it does not use keyword counts as proof of semantic completeness and does not attempt perfect LLM classification.
+
+**High-confidence block cases:**
+- Bare lettered/numbered choices combined with `choose`, `approve`, `confirm`, `prefer`, or equivalent question language and no explanatory context.
+- `Which do you prefer?` or an equivalent context-free choice.
+- A labelled Decision/Options request missing any semantic equivalent of Decision, Why now, Background, Concrete example, Options, Recommendation, Default or deferral, or Reply format.
+- Options without a recommendation; a recommendation without stated assumptions and the strongest reasonable counterargument.
+- A question introducing new technical jargon without a background explanation or concrete project-specific example.
+- An observably forwarded subagent decision request that fails the same contract.
+
+- [ ] First write failing fixtures for: bare A/B/C choices; each of the eight missing fields; incomplete per-option outcome/benefit/risk/reversibility/cost details; Options without Recommendation; Recommendation without counterargument; unexplained jargon; and an invalid forwarded subagent request.
+- [ ] Write allowed fixtures for: a normal explanation; a reversible low-risk choice the agent already handled; a contextual undiscoverable clarification; a learning question stating the concept and why it checks it; a final report with no question; and a quoted bad example that is being explained rather than sent as a request.
+- [ ] Ambiguous cases emit bounded advisory context and exit `0`. Only the high-confidence cases above block with exit `2`.
+- [ ] Key state by latest-assistant-message hash, never store prompt text, and block at most twice for the same unchanged message. On the third Stop, emit one visible unresolved warning and allow the session boundary.
+- [ ] Test output/state caps and prove prompt/transcript contents never appear in persisted state or diagnostics.
+- [ ] Commit: `feat(discipline): gate context-free decisions`.
+
+## Task 9: Persist session-boundary and repeated-error reminders
 
 **Files:**
 - Create: `S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer\hooks\policies\session-boundary.mjs`
@@ -154,7 +188,7 @@
 - [ ] Test fingerprint stability, unrelated errors, compaction/re-entry, state corruption, expiry, and storage cap.
 - [ ] Commit: `feat(discipline): persist circuit-breaker state`.
 
-## Task 9: Full plugin validation and cold-start acceptance
+## Task 10: Full plugin validation and cold-start acceptance
 
 **Files:**
 - Create: `S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer\tests\fixtures\repositories\`
@@ -162,13 +196,13 @@
 - Modify: `S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer\.claude-plugin\plugin.json`
 
 - [ ] Run all Node tests on Windows and macOS path fixtures; run `claude plugin validate --strict` for plugin and marketplace.
-- [ ] Reinstall the local plugin after version bump, start a fresh Claude task, and exercise: delegated edit allowed; hands-on edit allowed; undeclared edit blocked; sensitive path flagged; large commit blocked; reviewed completion allowed.
+- [ ] Reinstall the local plugin after version bump, start a fresh Claude task, and exercise: delegated edit allowed; hands-on edit allowed; undeclared edit blocked; sensitive path flagged; large commit blocked; context-free consequential decision blocked; valid contextual decision allowed; reviewed completion allowed.
 - [ ] Inspect state files, real hook output, Git index preservation, and representative edited/test artifacts; exit codes alone are insufficient.
 - [ ] Spawn independent code review; rerun its evidence from the main orchestrator.
 - [ ] Update `tests/acceptance.md` with date/platform/Claude version and exact pass/fail commands. Do not mark macOS accepted from Windows or WSL.
 - [ ] Commit: `test(discipline): verify Claude enforcement workflow`.
 
-## Task 10: Codex adapter spike and bootstrap integration
+## Task 11: Codex adapter spike and bootstrap integration
 
 **Files:**
 - Create only after a successful runtime spike: `S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer\.codex-plugin\plugin.json`
@@ -181,6 +215,7 @@
 
 - [ ] In a new Codex task where `codex plugin` is executable, scaffold/validate the smallest native plugin with the official `plugin-creator` scripts and confirm whether hook execution is actually supported.
 - [ ] If native Codex hooks are unsupported, do not create the two Codex files above. Install a tracked Git adapter that invokes the shared plugin policy modules from the manifest-owned custom skills checkout for staged diff/protected-file/review-evidence gates; keep edit/delegation policy in Codex AGENTS/rules and label it advisory, not mechanically enforced.
+- [ ] If native Codex Stop/output hooks are unsupported, explicitly record that contextual decision interception is unavailable. Cover the intent through generated AGENTS/rules and preference-engine evals without claiming a mechanical gate.
 - [ ] Wire `.githooks/pre-commit` as a fail-closed dispatcher: run preference `check --staged` first, then `node sync-setup/.githooks/discipline-pre-commit.mjs`; the adapter resolves the custom repo from compiled bootstrap manifest and invokes `hooks/runner.mjs git-pre-commit`. Preserve and propagate the first non-zero exit code.
 - [ ] Add a provider-neutral `record-review` CLI that accepts the current diff hash and a real review artifact path, validates both, and stores only their hashes. The Git adapter rejects stale/missing review evidence after production edits; it never accepts a plain assistant claim.
 - [ ] If supported, build a thin adapter that invokes the same deterministic policy modules; do not duplicate policies or put Claude hook fields into an invalid Codex manifest.
@@ -194,7 +229,7 @@
 ```powershell
 $pluginRoot = "S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer"
 $tests = @(Get-ChildItem "$pluginRoot\tests" -Filter "*.test.mjs" -File)
-if ($tests.Count -lt 9) { throw "Expected at least 9 discipline test files; found $($tests.Count)." }
+if ($tests.Count -lt 10) { throw "Expected at least 10 discipline test files; found $($tests.Count)." }
 node --test $tests.FullName
 claude plugin validate --strict "S:\git\15-skills\garen-agent-skills\plugins\garen-discipline-enforcer"
 claude plugin validate --strict "S:\git\15-skills\garen-agent-skills"
@@ -203,7 +238,7 @@ git -C "S:\git\15-skills\garen-agent-skills" diff --check -- .claude-plugin plug
 Select-String -Path "C:\Users\garet\sync-setup\.githooks\pre-commit" -Pattern "discipline-pre-commit.mjs"
 ```
 
-Expected: all deterministic tests pass; strict validation passes; Claude lists `garen-discipline-enforcer@garen-agent-skills` enabled at user scope; real acceptance evidence covers all six Claude gates; unrelated dirty files in the custom skills repo are not staged or modified. Codex support is labelled either native-hook accepted or fallback accepted; fallback acceptance must prove staged Git/review gates and explicitly mark built-in edit interception unavailable.
+Expected: all deterministic tests pass; strict validation passes; Claude lists `garen-discipline-enforcer@garen-agent-skills` enabled at user scope; real acceptance evidence covers all seven Claude gates; unrelated dirty files in the custom skills repo are not staged or modified. Codex support is labelled either native-hook accepted or fallback accepted; fallback acceptance must prove staged Git/review gates and explicitly mark built-in edit and decision-output interception unavailable.
 
 ## Fallback
 
