@@ -2,7 +2,7 @@
 
 ## Identifier and scope
 
-Use `protocol_version: autonomous-artifacts-v2` for Discovery, Planning, and Implementation runs. Each skill vendors this protocol so it remains usable alone. Durable artifacts are the source of truth; conversation summaries and worker completion messages are claims until reconciled with files and repository evidence.
+Use `protocol_version: autonomous-artifacts-v2` for Discovery runs. Durable artifacts are the source of truth; conversation summaries and worker completion messages are claims until reconciled with files and repository evidence.
 
 ## Canonical run root
 
@@ -14,14 +14,12 @@ docs/agent-runs/<YYYYMMDD>-<goal-slug>[-N]/
 ├── EVENTS.jsonl
 ├── SCOPE.md
 ├── DISCOVERY.md
-├── MASTER-PLAN.md
-├── IMPLEMENTATION-NOTES.md
 ├── gates/
 │   └── G-###.md
 ├── packets/
-│   └── D-001.md, P-001.md, or I-001.md
+│   └── D-001.md
 ├── reports/
-│   └── D-001-report.md, P-001-report.md, or I-001-report.md
+│   └── D-001-report.md
 ├── evidence/
 └── SESSION-HANDOFF.md
 ```
@@ -39,7 +37,7 @@ The state records at minimum:
 - requested/effective orchestrator and worker models plus fallback reasons;
 - baseline Git SHA and pre-existing dirty paths when Git exists;
 - `SCOPE.md`, stop-boundary, and stage-artifact paths;
-- Discovery, Planning, and Implementation readiness values;
+- Discovery readiness and its ordinary-workflow route;
 - artifact revisions, source revisions, freshness evidence, `derived_from`, and `supersedes` links;
 - packet table, dependency, status, report, evidence, requested/effective model, and fallback reason;
 - `session_budget`, `completed_weight`, retry counters, risk mode, context telemetry, and UAT state;
@@ -50,9 +48,7 @@ Packet statuses are exactly `pending`, `in_progress`, `verified`, `blocked`, or 
 
 ## Readiness semantics
 
-`discovery_readiness` is the current Discovery artifact's handoff/entry readiness for Planning. Derive the exact `DISCOVERY.md` summary line from it: `ready` maps to `Planning readiness: READY`; `not_ready` and `stale` map to `Planning readiness: NOT_READY`.
-
-`planning_readiness` is different: it describes an actual Planning artifact's readiness for its downstream stage. Keep it `not_assessed` until a Planning artifact exists. Protocol v2 retains both shared field names; do not use `planning_readiness` as a synonym for Discovery handoff readiness.
+`discovery_readiness` is the current Discovery artifact's handoff/entry readiness for the ordinary scoped workflow. Derive the exact `DISCOVERY.md` summary line from it: `ready` maps to `Workflow readiness: READY`; `not_ready` and `stale` map to `Workflow readiness: NOT_READY`.
 
 ## Artifact lineage and freshness
 
@@ -66,7 +62,7 @@ Before consuming an upstream artifact:
 4. Mark the artifact stale when current evidence changes a decision owned by that stage.
 5. Preserve the contradiction and supersession link; route to the owning stage.
 
-A framing contradiction routes to Discovery. An architecture, interface, data, sequencing, migration, or verification contradiction routes to Planning. A local reversible choice inside a current contract remains with Implementation.
+A framing contradiction routes to Discovery. Architecture, interface, data, sequencing, migration, verification, and local reversible choices return to the ordinary scoped workflow under the project's normal planning and implementation rules.
 
 Equivalent non-canonical artifacts may be consumed only when their content satisfies the required fields and freshness checks. Record the equivalent source path and mapped revision.
 

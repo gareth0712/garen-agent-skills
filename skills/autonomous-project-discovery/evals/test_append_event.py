@@ -170,9 +170,8 @@ def test_new_and_empty_streams_append_exact_records() -> None:
         second = run_cli(
             run_root,
             *append_args(
-                stage="PLANNING",
                 event_type="stage_routed",
-                evidence_summary="routed to planning",
+                evidence_summary="returned to scoped workflow",
                 **accepted_anchor(first_metadata),
             ),
         )
@@ -337,10 +336,11 @@ def test_invalid_and_bounded_inputs_reject_before_stream_creation() -> None:
         reference.write_text("reference\n", encoding="utf-8")
         invalid_args = (
             append_args(stage="UNKNOWN"),
+            append_args(stage="PLANNING"),
             append_args(from_status="complete"),
             append_args(to_status="complete"),
             append_args(packet_id="D-01"),
-            append_args(stage="PLANNING", packet_id="D-001"),
+            append_args(packet_id="P-001"),
             append_args(evidence_summary="x" * 10_000),
             append_args(references=("reference.txt",) * 100),
         )
@@ -397,7 +397,6 @@ def append_two_events(run_root: Path) -> dict[str, Any]:
     second = run_cli(
         run_root,
         *append_args(
-            stage="PLANNING",
             event_type="stage_routed",
             evidence_summary="second accepted event",
             **accepted_anchor(first_metadata),

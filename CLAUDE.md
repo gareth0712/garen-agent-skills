@@ -112,13 +112,11 @@ On compaction, preserve in priority order:
 → Defined in `~/.claude/rules/common/speculation.md` (auto-loaded). Contains failure modes list and hedging-word rules.
 
 ## Skill workflow routing
-- The default controller for substantial autonomous delivery is the pure lifecycle `autonomous-project-discovery → autonomous-planning → autonomous-implementation`. Apply the skills' actual activation boundaries; do not trigger them merely because a request uses the word “autonomous.”
-- When Discovery reaches `ready` and the original request already authorizes end-to-end local delivery, continue to Planning without asking again. Discovery must not skip directly to Implementation.
-- Continue from Planning to Implementation only when durable state records `delegated_execution_authority` or `explicitly_approved` for the exact current plan revision, scope, and allowed side effects. Any material revision invalidates that authority.
-- During an autonomous run, the current autonomous stage is the only top-level orchestrator. Encode RED/GREEN evidence, debugging steps, review axes, and verification commands as Task Contract data; do not invoke another lifecycle or process skill as a leaf workflow.
-- Dispatch at most one state-changing worker at a time. Other agent slots may perform only isolated read-only work or review explicitly allowed by the current stage.
-- Small bugs, narrow refactors, copy changes, and fully specified low-risk work may use direct scoped implementation when the autonomous activation boundary says `skip`; this is not a second lifecycle.
-- The only retained Matt utilities are `setup-pre-commit`, `teach`, and `writing-great-skills`. They are manual-only, never replace the autonomous controller, and must not modify autonomous state or routing.
+- Use `autonomous-project-discovery` only for greenfield work, materially ambiguous substantial subsystems, or stale/insufficient product framing within its activation boundary.
+- When Discovery records `ready` or `skip`, end that lifecycle and return control to the ordinary scoped workflow. Apply the project's normal planning, delegation, TDD, review, Git, and side-effect rules; do not require an autonomous successor skill.
+- During Discovery, it remains the only top-level orchestrator. Dispatch at most one state-changing worker at a time; other workers may perform only isolated read-only work or review allowed by the current Discovery packet.
+- Small bugs, narrow refactors, copy changes, and fully specified low-risk work use the ordinary scoped workflow directly.
+- The retained Matt utilities `setup-pre-commit`, `teach`, and `writing-great-skills` are manual-only and must not modify Discovery state or routing.
 - Use `setup-pre-commit` only with explicit dependency, lockfile, hook, and commit authorization. Use `teach` only when the user explicitly requests a teaching workspace. Use `writing-great-skills` only for skill authoring.
 - Autonomous runs must use their own `SESSION-HANDOFF.md` and canonical artifact protocol.
 - Branches, commits, tracker writes, dependencies, lockfile changes, deploys, secrets, destructive operations, and external effects require the corresponding explicit authorization.

@@ -7,7 +7,7 @@ description: Use whenever a greenfield project, product, repository, or applicat
 
 ## Purpose
 
-Turn project fog into a bounded, evidence-backed framing and an explicit Planning-readiness decision. Discovery owns the problem, users, outcomes, scope, non-goals, hard constraints, acceptance intent, and project-wide uncertainty. Planning owns detailed architecture, interfaces, data models, milestones, migration, deployment, and verification design.
+Turn project fog into a bounded, evidence-backed framing and an explicit ordinary-workflow readiness decision. Discovery owns the problem, users, outcomes, scope, non-goals, hard constraints, acceptance intent, and project-wide uncertainty. The ordinary scoped workflow owns detailed architecture, interfaces, data models, milestones, migration, deployment, and verification design.
 
 Discovery produces canonical `DISCOVERY.md` and `AGENT-STATE.md`. It may create isolated disposable examples or prototypes that unlock a named decision, but it does not create production implementation.
 
@@ -30,7 +30,7 @@ Use this workflow for:
 - any greenfield/new project, product, repository, application, platform, service, or system without a current sufficient Discovery artifact or equivalent, even when the prompt appears detailed or well specified;
 - a substantial new subsystem whose outcome, users, scope, risks, or constraints remain materially ambiguous;
 - a request to explore whether an idea should exist;
-- stale or insufficient framing routed backward by Planning or Implementation.
+- stale or insufficient framing identified by an ordinary scoped workflow.
 
 Do not activate the full workflow for ordinary questions, small bug fixes, narrow refactors, copy changes, or well-specified work in an understood existing project. If invoked for one of those existing-project cases and the evidence supports `skip`, record the depth decision and route to the ordinary scoped workflow.
 
@@ -79,7 +79,7 @@ Completion criterion: `AGENT-STATE.md` and `DISCOVERY.md` agree on the selected 
 
 Record stakeholders, users, underlying problem, desired outcomes, scope, non-goals, constraints, existing assets, primary journeys, acceptance intent, facts, assumptions, proposals, and rejected framings. Challenge the requested solution against simpler validation paths and direct contradictions.
 
-Keep architecture candidates at the level needed to expose constraints or decisions. Do not select detailed components, API/data contracts, implementation stages, or detailed test/deployment plans; route those to Planning.
+Keep architecture candidates at the level needed to expose constraints or decisions. Do not select detailed components, API/data contracts, implementation stages, or detailed test/deployment plans; hand those decisions to the ordinary scoped workflow.
 
 Completion criterion: the problem and outcome are testable, scope has a stop boundary, and proposals are not presented as facts.
 
@@ -101,7 +101,7 @@ For every material outcome, persist a stable outcome ID, observable claim, oracl
 
 For missing production/commercial evidence, inspect observable evidence first and ask one sharp decision-unlocking question at a time. Persist the decision, why it is material, required evidence, answer or non-answer, and never repeat a substantively answered question. Questions challenge the product hypothesis without pressuring the user toward approval. Continue until every current-scope material claim is evidenced, falsifiable, or owned; the user explicitly overrides; or a genuine external blocker remains. After an explicit override, stop re-litigating the same gate.
 
-Derive `product_justification_state` independently from `discovery_readiness`: `approved`, `blocked`, `user_directed_unapproved`, or `bypassed_learning`. `approved` requires both gates to pass. A failed or unavailable production/commercial gate is `blocked` and `not_ready` unless the user explicitly overrides. An exact user insistence may set `user_directed_unapproved` and permit Planning readiness when all other framing is complete, but every downstream handoff preserves the failed claims, exact override scope, and non-endorsement. `bypassed_learning` may be ready only when outcome verification passes. Routine `skip` work does not activate either gate.
+Derive `product_justification_state` independently from `discovery_readiness`: `approved`, `blocked`, `user_directed_unapproved`, or `bypassed_learning`. `approved` requires both gates to pass. A failed or unavailable production/commercial gate is `blocked` and `not_ready` unless the user explicitly overrides. An exact user insistence may set `user_directed_unapproved` and permit workflow readiness when all other framing is complete, but every downstream handoff preserves the failed claims, exact override scope, and non-endorsement. `bypassed_learning` may be ready only when outcome verification passes. Routine `skip` work does not activate either gate.
 
 Completion criterion: the two gate-local states, aggregate state, evidence revision, every material outcome row, and any exact override or learning-bypass boundary are mutually consistent and durable.
 
@@ -133,17 +133,17 @@ The worker writes reusable artifacts first. Before accepting them, the top-level
 
 Completion criterion: the packet is `verified`, `blocked`, or `superseded` with inspectable evidence and an explicit next action.
 
-### 10. Assess Planning readiness
+### 10. Assess ordinary-workflow readiness
 
-Write exactly one summary line in `DISCOVERY.md`: `Planning readiness: READY` or `Planning readiness: NOT_READY`.
+Write exactly one summary line in `DISCOVERY.md`: `Workflow readiness: READY` or `Workflow readiness: NOT_READY`.
 
-`discovery_readiness` is the current Discovery artifact's handoff/entry readiness for Planning. Set it in `AGENT-STATE.md` to exactly one of:
+`discovery_readiness` is the current Discovery artifact's handoff/entry readiness for the ordinary scoped workflow. Set it in `AGENT-STATE.md` to exactly one of:
 
 - `ready`: framing is current and satisfies the readiness rubric;
 - `not_ready`: a named blocking decision, packet, or canonical human/external/operational gate remains;
 - `stale`: current repository/reference evidence contradicts the artifact revision.
 
-Derive the exact `DISCOVERY.md` line from that field: `ready` => `Planning readiness: READY`; `not_ready` or `stale` => `Planning readiness: NOT_READY`. The separate `planning_readiness` field means an actual Planning artifact's readiness for its downstream stage, so it remains `not_assessed` until Planning exists.
+Derive the exact `DISCOVERY.md` line from that field: `ready` => `Workflow readiness: READY`; `not_ready` or `stale` => `Workflow readiness: NOT_READY`.
 
 Discovery readiness means the problem/outcome are clear, scope is bounded, primary journeys and hard constraints are known, architecture-changing ambiguity is resolved or explicitly delegated, dangerous assumptions are visible, and every remaining unknown has an owner. It does not mean zero uncertainty.
 
@@ -155,13 +155,13 @@ Use these testable routes:
 
 | State | Route |
 |---|---|
-| `skip` | Record why ordinary scoped work is sufficient; do not create Planning packets. |
+| `skip` | Set `next_stage: SCOPED_WORKFLOW`, record why ordinary scoped work is sufficient, and return control to that workflow. |
 | `ready` and only exploration was requested | Stop after Discovery and preserve the exact continuation command. |
-| `ready` and planning/building was requested | Route to Planning; never jump directly to Implementation. |
+| `ready` and planning/building was requested | End Discovery with `next_stage: SCOPED_WORKFLOW`. Return control to the project's ordinary scoped workflow for planning, delegation, TDD, and review; do not start another autonomous lifecycle. |
 | `not_ready` with a resolvable packet | Continue bounded Discovery. |
 | `not_ready` with a material preference/product decision | Request one focused human gate, persist the pause, and stop. |
 | `stale` or framing-changing contradiction | Set `next_stage: DISCOVERY`, preserve supersession evidence, and rediscover only the affected scope. |
-| Architecture/interface/sequencing detail only | Preserve Discovery framing and route the question to Planning. |
+| Architecture/interface/sequencing detail only | Preserve Discovery framing and return the question to ordinary workflow planning. |
 
 Before a required session cutover, write `SESSION-HANDOFF.md` and persist `continuation_kind`, `continuation_verification`, and the exact `continuation_command` value. Use `verified_command` only after a harmless capability check proves the executable and invocation form. Otherwise use `manual_host_action` with precise natural language naming this skill, the absolute run root, first-read files, gate input, and next action. Never invent CLI syntax. End cleanly without compressing work, reducing verification, or silently crossing a user gate.
 
@@ -169,7 +169,7 @@ Before a required session cutover, write `SESSION-HANDOFF.md` and persist `conti
 
 Proceed autonomously only inside recorded scope and permissions. Low-impact reversible framing choices may be decided and recorded. Medium-impact reversible choices require delegated authority. High-impact, security/legal-sensitive, user-facing, expensive, difficult-to-reverse, destructive, public, or credential-dependent choices require explicit authority unless the current artifact grants that exact choice.
 
-Discovery may write run artifacts and isolated disposable prototypes. It may not modify product code, perform deployment/publishing, change secrets, commit unless authorized, or decide detailed system design owned by Planning.
+Discovery may write run artifacts and isolated disposable prototypes. It may not modify product code, perform deployment/publishing, change secrets, commit unless authorized, or decide detailed system design owned by the ordinary scoped workflow.
 
 ## Completion checklist
 
@@ -184,6 +184,6 @@ Discovery is complete only when:
 - retained unknowns use the exact class/owner/disposition contract;
 - every retained packet/report/evidence artifact has been sampled by the orchestrator;
 - readiness and the backward/forward route are explicit and testable;
-- no production implementation or Planning-owned detail was silently created;
+- no production implementation or downstream workflow detail was silently created;
 - the continuation kind, verification evidence, exact value, and whether restart is manual are honest;
 - representative artifacts, not exit codes or worker self-reports alone, support the verdict.

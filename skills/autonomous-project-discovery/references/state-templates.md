@@ -18,7 +18,7 @@ Replace every brace-delimited value with observed run data before accepting an a
 
 Only the top-level orchestrator writes this file.
 
-`discovery_readiness` is this Discovery artifact's handoff/entry readiness for Planning. It alone derives the `DISCOVERY.md` line: `ready` => `Planning readiness: READY`; `not_ready` or `stale` => `Planning readiness: NOT_READY`. `planning_readiness` instead describes an actual Planning artifact's downstream readiness and remains `not_assessed` until Planning exists. The product-justification fields are required only when the two challenges activate; omit that complete section for `skip` work and record the inactive route in depth evidence.
+`discovery_readiness` is this Discovery artifact's handoff/entry readiness for the ordinary scoped workflow. It alone derives the `DISCOVERY.md` line: `ready` => `Workflow readiness: READY`; `not_ready` or `stale` => `Workflow readiness: NOT_READY`. The product-justification fields are required only when the two challenges activate; omit that complete section for `skip` work and record the inactive route in depth evidence.
 
 ```markdown
 # Agent State
@@ -82,9 +82,7 @@ commit_policy: {not_authorized | path_limited_authorized}
 
 discovery_depth: {skip | targeted | full}
 discovery_readiness: {ready | not_ready | stale}
-planning_readiness: not_assessed
-implementation_readiness: not_assessed
-next_stage: {DISCOVERY | PLANNING | STOP}
+next_stage: {DISCOVERY | SCOPED_WORKFLOW | STOP}
 
 ## Product justification
 
@@ -116,11 +114,6 @@ repository_revision_at_discovery: {revision inspected by DISCOVERY.md}
 derived_from: {source artifact revision | none_for_initial_discovery}
 freshness_evidence: {paths/revisions/commands proving currency}
 supersedes: {prior discovery revision | none_for_initial_revision}
-
-planning_artifact_path: {current equivalent path | none_created}
-planning_revision: {current revision | not_assessed}
-implementation_artifact_path: {current equivalent path | none_created}
-implementation_revision: {current revision | not_assessed}
 
 predecessor_run_root: {portable project-relative frozen run root | none_for_initial_run}
 predecessor_state_sha256: {final lowercase 64-hex SHA-256 of predecessor AGENT-STATE.md | none_for_initial_run}
@@ -221,7 +214,7 @@ updated_at: {ISO-8601 timestamp}
 
 ## Stop boundary
 
-Discovery stops after a current `DISCOVERY.md`, an explicit Planning-readiness decision, and a durable next route. It does not produce production code or Planning-owned detailed architecture, interfaces, data contracts, milestones, migration, deployment, or verification plans.
+Discovery stops after a current `DISCOVERY.md`, an explicit ordinary-workflow readiness decision, and a durable next route. It does not produce production code or downstream detailed architecture, interfaces, data contracts, milestones, migration, deployment, or verification plans.
 
 ## Authority
 
@@ -382,7 +375,7 @@ updated_at: {ISO-8601 timestamp}
 - Requested solution versus underlying problem: {finding}
 - Simpler validation path or existing alternative: {finding}
 - Contradictions/excess scope: {finding}
-- Boundary handed to Planning: {constraints/decision questions only; no selected detailed architecture/API/data/stages}
+- Boundary handed to the ordinary scoped workflow: {constraints/decision questions only; no selected detailed architecture/API/data/stages}
 
 ## Research and prototype packets
 
@@ -394,9 +387,9 @@ updated_at: {ISO-8601 timestamp}
 
 | decision | outcome or bounded alternatives | authority/evidence | downstream owner |
 |---|---|---|---|
-| {named decision} | {outcome or choices} | {source/approval} | {Discovery | Planning | Implementation | user role} |
+| {named decision} | {outcome or choices} | {source/approval} | {Discovery | ordinary scoped workflow | user role} |
 
-## Planning readiness evidence
+## Workflow readiness evidence
 
 - Problem/outcome clarity: {pass/fail evidence}
 - Bounded scope and stop boundary: {pass/fail evidence}
@@ -406,12 +399,12 @@ updated_at: {ISO-8601 timestamp}
 - Dangerous assumptions: {visible with owners/blocker}
 - Remaining unknown ownership: {all owned/blocker}
 
-Planning readiness: {READY | NOT_READY}
+Workflow readiness: {READY | NOT_READY}
 
 ## Route and residual uncertainty
 
 - Current `discovery_readiness`: {ready | not_ready | stale}
-- Next stage: {DISCOVERY | PLANNING | STOP}
+- Next stage: {DISCOVERY | SCOPED_WORKFLOW | STOP}
 - Residual owned uncertainty: {items, owners, dispositions}
 - Canonical gates: {human, external, or operational gate with owner/recovery | none}
 - Continuation kind: {verified_command | manual_host_action}
@@ -483,7 +476,7 @@ Before its first write, the worker repeats the same checks as defense in depth a
 ## Scope and stop boundary
 
 - In scope: {bounded evidence/prototype surface}
-- Out of scope: production implementation and Planning-owned detailed design
+- Out of scope: production implementation and downstream detailed design
 - Stop when: {observable signal or bounded negative result}
 - Durable progress boundary: {worker-progress marker, next milestone, and verified enforceable exhaustion signal; block capability preflight if none exists}
 
@@ -551,14 +544,14 @@ evidence_paths:
 
 | allowed response | evidence required | resulting packet/state transition | route |
 |---|---|---|---|
-| {exact allowed response or recovery outcome} | {response/prototype/evidence revision} | {from status => to status} | {retry/continue Discovery packet | PLANNING | STOP} |
+| {exact allowed response or recovery outcome} | {response/prototype/evidence revision} | {from status => to status} | {retry/continue Discovery packet | SCOPED_WORKFLOW | STOP} |
 
 ## Resolution
 
 - Resolved at: {ISO-8601 timestamp | pending}
 - Recorded response: {bounded response | pending}
 - Resolution evidence/revision: {path/revision | pending}
-- Resulting route: {DISCOVERY | PLANNING | STOP | pending}
+- Resulting route: {DISCOVERY | SCOPED_WORKFLOW | STOP | pending}
 ```
 
 ## `reports/D-###-report.md`
@@ -578,7 +571,7 @@ completed_at: {ISO-8601 timestamp}
 
 - Primary outcome: {result}
 - Decision enabled or narrowed: {result and confidence}
-- Recommended route: {Discovery packet | canonical gate | Planning | stop}
+- Recommended route: {Discovery packet | canonical gate | ordinary scoped workflow | stop}
 
 ## Decisions and assumptions
 
@@ -663,7 +656,7 @@ restart_mode: {manual | host-confirmed automatic action}
 
 ## Next action
 
-- Owning stage: {DISCOVERY | PLANNING | STOP}
+- Owning stage: {DISCOVERY | SCOPED_WORKFLOW | STOP}
 - Exact next action: {one evidence-based action}
 - Required files to read first: AGENT-STATE.md, SCOPE.md, DISCOVERY.md, {active packet/report paths}
 - Continuation kind: {verified_command | manual_host_action}

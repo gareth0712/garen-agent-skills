@@ -1,3 +1,0 @@
-export function searchTasks(tasks, query) {
-  return tasks.filter((task) => task.title.includes(query));
-}

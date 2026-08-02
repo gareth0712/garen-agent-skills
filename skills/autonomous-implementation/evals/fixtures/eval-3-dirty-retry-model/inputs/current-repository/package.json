@@ -1,9 +1,0 @@
-{
-  "name": "implementation-eval-notification-flag",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test": "node --test",
-    "flow": "node scripts/real-flow.js"
-  }
-}

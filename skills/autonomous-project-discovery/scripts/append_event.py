@@ -22,9 +22,9 @@ from typing import Any, NoReturn, Sequence
 EVENTS_NAME = "EVENTS.jsonl"
 FREEZE_NAME = "EVENTS.FROZEN"
 FREEZE_BYTES = b'{"state":"append_in_progress_or_failed","version":1}\n'
-STAGES = {"DISCOVERY": "D", "PLANNING": "P", "IMPLEMENTATION": "I"}
+STAGES = {"DISCOVERY": "D"}
 STATUSES = {"pending", "in_progress", "verified", "blocked", "superseded"}
-PACKET_ID_RE = re.compile(r"([DPI])-\d{3}")
+PACKET_ID_RE = re.compile(r"D-\d{3}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 GENESIS_EVENT_SHA256 = "0" * 64
 EMPTY_EVENTS_SHA256 = hashlib.sha256(b"").hexdigest()
@@ -495,7 +495,7 @@ def _validate_inputs(
         raise AppendEventError("invalid status")
     if packet_id is not None:
         match = PACKET_ID_RE.fullmatch(packet_id)
-        if match is None or match.group(1) != STAGES[stage]:
+        if match is None:
             raise AppendEventError("invalid packet id")
 
 

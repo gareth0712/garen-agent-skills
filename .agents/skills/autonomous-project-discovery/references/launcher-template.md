@@ -8,11 +8,12 @@ Use `autonomous-project-discovery` to run bounded, artifact-driven Discovery fro
 Goal:
 - Desired outcome: {describe the problem or idea to frame}
 - Why now / evidence: {known evidence, or "not yet established"}
+- Product intent: {production_commercial | learning_prototype | determine from one focused question after evidence inspection}
 
 Scope:
 - In scope: {bounded product, repository, or subsystem}
 - Out of scope: {adjacent work excluded from this run}
-- Stop boundary: produce a current `DISCOVERY.md` and explicit Planning-readiness decision; do not create production implementation or Planning-owned architecture/API/data/stage detail
+- Stop boundary: produce a current `DISCOVERY.md` and explicit ordinary-workflow readiness decision; do not create production implementation or downstream architecture/API/data/stage detail
 
 Authority and external effects:
 - Reversible Discovery artifact edits inside the selected run root: allowed
@@ -20,6 +21,9 @@ Authority and external effects:
 - Network research: read-only and bounded to a named decision; otherwise disabled
 - Credentials, secrets, destructive changes, deployment, publishing, purchases, messages, and public actions: not authorized
 - Material product, legal, security, expensive, or hard-to-reverse decisions: require explicit approval
+- Direct-model baseline authority: read-only local evidence only; external model/API execution requires separately recorded authority
+- User override policy: if I explicitly insist after an insufficient gate, continue as `user_directed_unapproved`; preserve the failed claims and never call the project approved
+- Learning/prototype bypass policy: bypass product-existence justification only with a learning objective, non-commercial boundary, bounded effects/time, and revisit trigger; outcome verification remains mandatory; recheck and evidence the trigger at rehydrate/readiness, blocking when fired or unverifiable
 
 Checkpoint policy:
 - Commit policy: do not commit unless I explicitly authorize a path-limited checkpoint
@@ -53,8 +57,8 @@ Retry and session policy:
 - When cutover is required, write `SESSION-HANDOFF.md`, `continuation_kind`, `continuation_verification`, and the exact `continuation_command` value; use a command only after a harmless capability check, otherwise write a precise manual host action
 
 Requested follow-through:
-- After Discovery: {stop | route to Planning when ready}
-- After Planning: {stop by default; only a separately authorized execution request may route to Implementation}
+- After Discovery: {stop | return to the ordinary scoped workflow when ready}
+- Downstream work: follow the project's normal planning, delegation, TDD, review, and side-effect authorization rules
 
 Begin by discovering capabilities, reading applicable project instructions, inspecting repository/reference territory, and checking existing artifact freshness. Ask no question until observable evidence has been inspected. Report completion only after opening representative artifacts and verifying the readiness evidence.
 ```
