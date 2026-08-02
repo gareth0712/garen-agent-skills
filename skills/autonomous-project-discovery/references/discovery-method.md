@@ -38,7 +38,7 @@ Maintain co-located sections for:
 - explicit facts, assumptions to test, proposals, and rejected framings;
 - dangerous assumptions that could invalidate the initiative.
 
-Challenge solution-first requests. Compare the requested solution with a simpler validation path, an existing tool, a smaller experiment, a separated product, or a different framing when evidence makes that credible. Be direct about contradictions and excessive scope. Discovery may state design constraints or compare alternatives only far enough to frame a later decision; Planning selects architecture, interfaces, data models, milestones, and detailed verification.
+Challenge solution-first requests. Compare the requested solution with a simpler validation path, an existing tool, a smaller experiment, a separated product, or a different framing when evidence makes that credible. Be direct about contradictions and excessive scope. Discovery may state design constraints or compare alternatives only far enough to frame a later decision; the ordinary scoped workflow selects architecture, interfaces, data models, milestones, and detailed verification.
 
 ## Product existence and outcome verifiability
 
@@ -69,7 +69,7 @@ Evaluate every learning revisit trigger during bootstrap/rehydration and immedia
 
 ### Outcome rows and sharp questions
 
-Create one row per material outcome with these exact fields: `outcome_id`, `claim`, `oracle_or_metric`, `representative_fixtures`, `adversarial_fixtures`, `acceptable_error`, `failure_classes`, `automatic_verification`, `human_boundary`, `rollback_recovery`, `falsification_condition`, and `owner_deadline`. The row frames observable acceptance; Planning still owns detailed test architecture and implementation sequencing.
+Create one row per material outcome with these exact fields: `outcome_id`, `claim`, `oracle_or_metric`, `representative_fixtures`, `adversarial_fixtures`, `acceptable_error`, `failure_classes`, `automatic_verification`, `human_boundary`, `rollback_recovery`, `falsification_condition`, and `owner_deadline`. The row frames observable acceptance; the ordinary scoped workflow still owns detailed test architecture and implementation sequencing.
 
 An outcome without a credible automatic oracle may use a specific human rubric naming who judges, when, and how disagreement is handled. It may not be labeled automatically verified. If neither an oracle nor a specific rubric exists, set `verifiability_gate_state: insufficient`; use `partial` when only a proper subset of material outcomes passes.
 
@@ -86,7 +86,7 @@ Derive `product_justification_state` separately from `discovery_readiness`:
 | `user_directed_unapproved` | The authorized user explicitly insists on a named continuation scope after a failed/insufficient gate | May be `ready` when other framing passes; preserve failed claims and non-endorsement |
 | `bypassed_learning` | The bounded learning record passes and verifiability is `approved` | May be `ready`; gives no production/commercial endorsement |
 
-`ready + user_directed_unapproved` means the product is framed well enough for Planning under the user's exact override; it does not mean Discovery endorses building it. `bypassed_learning` bypasses only commercial existence justification and still requires an approved verifiability gate. Every readiness route carries the aggregate state, evidence revision, override/bypass boundary, failed claims, effect-blocking gates, and revisit trigger.
+`ready + user_directed_unapproved` means the product is framed well enough for the ordinary scoped workflow under the user's exact override; it does not mean Discovery endorses building it. `bypassed_learning` bypasses only commercial existence justification and still requires an approved verifiability gate. Every readiness route carries the aggregate state, evidence revision, override/bypass boundary, failed claims, effect-blocking gates, and revisit trigger.
 
 ## Four unknown classes
 
@@ -113,7 +113,7 @@ Classify an uncertain decision by impact, reversibility, available evidence, con
 - Medium impact but reversible: Discovery may decide only when authority is explicitly delegated; otherwise propose a bounded choice.
 - High impact, security/legal-sensitive, user-facing, expensive, or difficult to reverse: require explicit approval unless current scope grants that exact authority.
 - Repository evidence contradicts framing: mark the artifact `stale` and route to Discovery.
-- Architecture/interface/data/sequencing/migration/verification detail: route to Planning.
+- Architecture/interface/data/sequencing/migration/verification detail: return to ordinary workflow planning.
 
 Allowed dispositions are exactly:
 
@@ -139,16 +139,16 @@ Operational preflight/recovery blockers use the same canonical artifact with typ
 
 ## Readiness rubric and routes
 
-`discovery_readiness` is the current Discovery artifact's handoff/entry readiness for Planning. Set it to one of `ready`, `not_ready`, or `stale`:
+`discovery_readiness` is the current Discovery artifact's handoff/entry readiness for the ordinary scoped workflow. Set it to one of `ready`, `not_ready`, or `stale`:
 
 | value | observable test | route |
 |---|---|---|
-| `ready` | Problem/outcome are clear; scope and stop boundary are bounded; primary journeys and hard constraints are known; framing-changing ambiguity is resolved; architecture-changing ambiguity is resolved or delegated; dangerous assumptions are visible; every remaining unknown has an owner and disposition. | Stop after Discovery if only exploration was requested; otherwise route to Planning. |
+| `ready` | Problem/outcome are clear; scope and stop boundary are bounded; primary journeys and hard constraints are known; framing-changing ambiguity is resolved; architecture-changing ambiguity is resolved or delegated; dangerous assumptions are visible; every remaining unknown has an owner and disposition. | Stop after Discovery if only exploration was requested; otherwise set `next_stage: SCOPED_WORKFLOW` and return to ordinary workflow planning, delegation, TDD, and review. |
 | `not_ready` | A named framing decision, required evidence packet, or material human preference/authority gate fails the ready test. | Continue a bounded Discovery packet or pause for one focused human gate. |
 | `stale` | Current repository/reference evidence contradicts the recorded discovery revision. | Preserve contradiction/supersession evidence, set `next_stage: DISCOVERY`, and refresh only the affected framing. |
 
-Derive exactly one summary line in `DISCOVERY.md`: `ready` => `Planning readiness: READY`; `not_ready` or `stale` => `Planning readiness: NOT_READY`. The separate `planning_readiness` field describes an actual Planning artifact's readiness for its downstream stage and stays `not_assessed` until Planning exists.
+Derive exactly one summary line in `DISCOVERY.md`: `ready` => `Workflow readiness: READY`; `not_ready` or `stale` => `Workflow readiness: NOT_READY`.
 
 ## Stop condition
 
-Discovery stops when uncertainty is manageable and owned, not when it reaches zero. Stop when the readiness rubric passes, or when the next progress requires a persisted human/external gate. Continue only while a bounded action can unlock a named decision. Do not research merely because more information exists, repeat an upstream pass wholesale, or drift into Planning-owned design and production implementation.
+Discovery stops when uncertainty is manageable and owned, not when it reaches zero. Stop when the readiness rubric passes, or when the next progress requires a persisted human/external gate. Continue only while a bounded action can unlock a named decision. Do not research merely because more information exists, repeat an upstream pass wholesale, or drift into downstream detailed design and production implementation.

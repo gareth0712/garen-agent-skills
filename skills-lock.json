@@ -1,23 +1,11 @@
 {
   "version": 1,
   "skills": {
-    "autonomous-implementation": {
-      "source": "gareth0712/garen-agent-skills",
-      "sourceType": "github",
-      "skillPath": "skills/autonomous-implementation/SKILL.md",
-      "computedHash": "9ca7e98a0dd2c3525eed4655bbab20ca992f6e5f979ca8fae84af4399e5eb4a5"
-    },
-    "autonomous-planning": {
-      "source": "gareth0712/garen-agent-skills",
-      "sourceType": "github",
-      "skillPath": "skills/autonomous-planning/SKILL.md",
-      "computedHash": "954e1f0e0d40b50892329e61803e9f5fb2396f383d54746a41ca534f8c93cf22"
-    },
     "autonomous-project-discovery": {
       "source": "gareth0712/garen-agent-skills",
       "sourceType": "github",
       "skillPath": "skills/autonomous-project-discovery/SKILL.md",
-      "computedHash": "bfa1cff7141b58e8f696b9b8b1af3f3786c4fbf2cb7ad094a61789e9b42ea386"
+      "computedHash": "cc7108676c9074add8a711c89203180fd608066237f7c185adfdad046c0d4168"
     },
     "brandkit": {
       "source": "Leonxlnx/taste-skill",

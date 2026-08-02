@@ -10,7 +10,7 @@
       "first_stage": "Discovery",
       "competing_owner": "autonomous-project-discovery",
       "required_artifact": "DISCOVERY.md",
-      "follow_up": "Planning, then Implementation only after both readiness gates",
+      "follow_up": "Return to the ordinary scoped workflow after Discovery becomes ready",
       "reason": "Greenfield build with no current Discovery artifact."
     },
     {
@@ -27,18 +27,18 @@
       "id": 3,
       "prompt": "Create an implementation plan for the project described in project-discovery.md.",
       "should_trigger_autonomous_project_discovery": false,
-      "first_stage": "Planning",
-      "competing_owner": "autonomous-planning",
+      "first_stage": "Ordinary scoped planning",
+      "competing_owner": "ordinary scoped workflow",
       "required_artifact": "A current sufficient Discovery artifact or documented equivalent",
-      "follow_up": "Planning only unless execution is requested",
-      "reason": "The request supplies upstream framing; Planning owns the executable design after its freshness gate."
+      "follow_up": "Plan only unless execution is requested",
+      "reason": "The request supplies upstream framing; the ordinary scoped workflow owns executable design after its freshness check."
     },
     {
       "id": 4,
       "prompt": "Implement the approved plan in implementation-plan.md.",
       "should_trigger_autonomous_project_discovery": false,
-      "first_stage": "Implementation",
-      "competing_owner": "autonomous-implementation",
+      "first_stage": "Ordinary scoped implementation",
+      "competing_owner": "ordinary scoped workflow",
       "required_artifact": "A current approved plan plus referenced Discovery evidence",
       "follow_up": "Execute only after consistency/readiness validation",
       "reason": "A direct execution request with an approved upstream plan should not restart broad Discovery."
@@ -60,15 +60,15 @@
       "first_stage": "Discovery depth gate",
       "competing_owner": "autonomous-project-discovery",
       "required_artifact": "Depth decision and DISCOVERY.md when targeted/full",
-      "follow_up": "Planning after Discovery readiness",
-      "reason": "A materially ambiguous major subsystem needs targeted/full Discovery before architecture Planning."
+      "follow_up": "Return to ordinary workflow planning after Discovery readiness",
+      "reason": "A materially ambiguous major subsystem needs targeted/full Discovery before architecture planning."
     },
     {
       "id": 7,
       "prompt": "Continue yesterday's implementation from current AGENT-STATE.md.",
       "should_trigger_autonomous_project_discovery": false,
-      "first_stage": "Implementation rehydration",
-      "competing_owner": "autonomous-implementation",
+      "first_stage": "Ordinary workflow rehydration",
+      "competing_owner": "ordinary scoped workflow",
       "required_artifact": "AGENT-STATE.md and current upstream artifacts",
       "follow_up": "Continue the verified next stage unless a framing contradiction is found",
       "reason": "Continuation uses durable state and does not restart upstream work without evidence."
@@ -80,18 +80,18 @@
       "first_stage": "Discovery for the affected offline framing scope",
       "competing_owner": "autonomous-project-discovery",
       "required_artifact": "Contradiction/supersession evidence and refreshed Discovery framing",
-      "follow_up": "Return to Planning after users, outcomes, scope, journeys, and acceptance intent are current",
+      "follow_up": "Return to ordinary workflow planning after users, outcomes, scope, journeys, and acceptance intent are current",
       "reason": "Offline mode changes product framing, not merely architecture."
     },
     {
       "id": 9,
       "prompt": "The current architecture cannot support the newly required offline mode, but users, outcomes, product scope, primary journeys, and acceptance intent are unchanged.",
       "should_trigger_autonomous_project_discovery": false,
-      "first_stage": "Planning",
-      "competing_owner": "autonomous-planning",
+      "first_stage": "Ordinary scoped planning",
+      "competing_owner": "ordinary scoped workflow",
       "required_artifact": "Current framing plus architecture contradiction evidence",
-      "follow_up": "Bounded Planning repair before Implementation resumes",
-      "reason": "An architecture-only contradiction is Planning-owned when framing remains current."
+      "follow_up": "Bounded ordinary-workflow plan repair before implementation resumes",
+      "reason": "An architecture-only contradiction belongs to ordinary workflow planning when framing remains current."
     },
     {
       "id": 10,
@@ -100,7 +100,7 @@
       "first_stage": "Discovery",
       "competing_owner": "autonomous-project-discovery",
       "required_artifact": "DISCOVERY.md",
-      "follow_up": "Planning only after Discovery readiness, then Implementation because build was requested",
+      "follow_up": "Return to the ordinary scoped workflow after Discovery readiness because a build was requested",
       "reason": "A detailed greenfield brief without a current sufficient Discovery artifact still enters Discovery first; detail may shorten the pass but cannot bypass it."
     }
   ]

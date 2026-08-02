@@ -13,7 +13,7 @@ Goal:
 Scope:
 - In scope: {bounded product, repository, or subsystem}
 - Out of scope: {adjacent work excluded from this run}
-- Stop boundary: produce a current `DISCOVERY.md` and explicit Planning-readiness decision; do not create production implementation or Planning-owned architecture/API/data/stage detail
+- Stop boundary: produce a current `DISCOVERY.md` and explicit ordinary-workflow readiness decision; do not create production implementation or downstream architecture/API/data/stage detail
 
 Authority and external effects:
 - Reversible Discovery artifact edits inside the selected run root: allowed
@@ -57,8 +57,8 @@ Retry and session policy:
 - When cutover is required, write `SESSION-HANDOFF.md`, `continuation_kind`, `continuation_verification`, and the exact `continuation_command` value; use a command only after a harmless capability check, otherwise write a precise manual host action
 
 Requested follow-through:
-- After Discovery: {stop | route to Planning when ready}
-- After Planning: {stop by default; only a separately authorized execution request may route to Implementation}
+- After Discovery: {stop | return to the ordinary scoped workflow when ready}
+- Downstream work: follow the project's normal planning, delegation, TDD, review, and side-effect authorization rules
 
 Begin by discovering capabilities, reading applicable project instructions, inspecting repository/reference territory, and checking existing artifact freshness. Ask no question until observable evidence has been inspected. Report completion only after opening representative artifacts and verifying the readiness evidence.
 ```
