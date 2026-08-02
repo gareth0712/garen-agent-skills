@@ -155,7 +155,7 @@ Use these testable routes:
 
 | State | Route |
 |---|---|
-| `skip` | Record why ordinary scoped work is sufficient and return control to that workflow. |
+| `skip` | Set `next_stage: SCOPED_WORKFLOW`, record why ordinary scoped work is sufficient, and return control to that workflow. |
 | `ready` and only exploration was requested | Stop after Discovery and preserve the exact continuation command. |
 | `ready` and planning/building was requested | End Discovery with `next_stage: SCOPED_WORKFLOW`. Return control to the project's ordinary scoped workflow for planning, delegation, TDD, and review; do not start another autonomous lifecycle. |
 | `not_ready` with a resolvable packet | Continue bounded Discovery. |

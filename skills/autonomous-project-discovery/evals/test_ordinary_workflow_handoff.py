@@ -34,3 +34,10 @@ def test_discovery_routes_ready_builds_to_ordinary_scoped_workflow() -> None:
     assert "ordinary scoped workflow" in skill_text
     assert "planning, delegation, TDD, and review" in skill_text
     assert "next_stage: SCOPED_WORKFLOW" in skill_text
+    assert "| `skip` | Set `next_stage: SCOPED_WORKFLOW`" in skill_text
+
+
+def test_discovery_event_helper_only_writes_discovery_stage_packets() -> None:
+    helper = (DISCOVERY_ROOT / "scripts" / "append_event.py").read_text(encoding="utf-8")
+    assert 'STAGES = {"DISCOVERY": "D"}' in helper
+    assert 'PACKET_ID_RE = re.compile(r"D-\\d{3}")' in helper
