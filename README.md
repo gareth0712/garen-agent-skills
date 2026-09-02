@@ -16,6 +16,7 @@ Skills are grouped by theme below. The **Invoke** column shows how each one fire
 | [planning](skills/planning/) | 🤖 | General-purpose planning driver for large-scale projects. Every plan or design it produces is automatically stress-tested for **scalability** (load model, partitioning, backpressure, data growth) and **resilience** (failure modes, idempotent retries, timeouts, degraded modes, replay) — you never have to ask. Also drives staged design roadmaps. |
 | [garen-debate](skills/garen-debate/) | 🤖 | Multi-round structured debate to pick between competing technical approaches. Assigns 3–6 defender agents, runs rounds of defense + counter-attack, and synthesizes a verdict with a tradeoff table. Use when you're unsure which option is best. |
 | [grilling](skills/grilling/) | 🤖 | Relentlessly interviews you about a plan or design to stress-test it before you build. Surfaces gaps, hidden assumptions, and weak spots. |
+| [ai-council](skills/ai-council/) | 🤖 | Evaluates a single idea, decision, or plan through five contrasting advisors (Contrarian Skeptic, First-Principles Engineer, Expansionist, Outsider, Executor), cross-critiques them, and delivers a Chairman's verdict: 1-hour decision, primary risk, #1 action. For A-vs-B technical choices use garen-debate instead. |
 | [grill-me](skills/grill-me/) | 👤 | Manual-invoke version of the same relentless plan/design interview. |
 
 ### Building & improving skills
@@ -24,6 +25,12 @@ Skills are grouped by theme below. The **Invoke** column shows how each one fire
 |-------|:------:|--------------|
 | [garen-skill-creator](skills/garen-skill-creator/) | 🤖 | Create, edit, and optimize skills; run evals to benchmark skill performance with variance analysis; and tune descriptions for better trigger accuracy. |
 | [writing-great-skills](skills/writing-great-skills/) | 👤 | Reference guide for the vocabulary and principles that make a skill predictable and well-written. |
+
+### Research & analysis
+
+| Skill | Invoke | What it does |
+|-------|:------:|--------------|
+| [research-council](skills/research-council/) | 🤖 | Researches an external topic or claim through five evidence advisors (Practitioner, Skeptic, Economist, Historian, Academic), maps their conflicts as findings, and delivers a CEO summary with confidence-ranked findings plus a self peer review. Specific claims must be search-verified and cited or labeled 未驗證. |
 
 ### Personal knowledge wiki (llm-wiki)
 
@@ -62,6 +69,39 @@ npx skills add gareth0712/garen-agent-skills --skill non-violent-communication -
 
 # Install all skills for Claude Code at project level
 npx skills add gareth0712/garen-agent-skills --all --agent claude-code
+
+# Install all skills from a repo to all agents
+npx skills add gareth0712/garen-agent-skills --all
+```
+
+### List installed skills
+
+```bash
+# List all installed skills (project and global)
+npx skills list
+
+# List all installed skills
+npx skills ls -g
+```
+
+### Updating skills
+
+```bash
+# Update all skills (interactive scope prompt)
+npx skills update
+
+# Update a single skill by name
+npx skills update my-skill
+
+# Update multiple specific skills
+npx skills update frontend-design web-design-guidelines
+
+# Update only global or project skills
+npx skills update -g
+npx skills update -p
+
+# Non-interactive (auto-detects scope: project if in a project, else global)
+npx skills update -y
 ```
 
 ## Validating skills
