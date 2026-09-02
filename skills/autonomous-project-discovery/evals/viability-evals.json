@@ -1,0 +1,62 @@
+{
+  "skill_name": "autonomous-project-discovery",
+  "evaluation_mode": "executable_behavior_contract",
+  "cases": [
+    {
+      "id": 1,
+      "intent": "production_commercial",
+      "scenario": "generic menu-photo model wrapper with an observed direct-model baseline covering the primary output and no evidenced durable advantage",
+      "should_activate_gates": true,
+      "expected_product_justification_state": "blocked",
+      "expected_discovery_readiness": "not_ready"
+    },
+    {
+      "id": 2,
+      "intent": "production_commercial",
+      "scenario": "the same insufficient wrapper after the user explicitly insists on continuing within a named scope",
+      "should_activate_gates": true,
+      "expected_product_justification_state": "user_directed_unapproved",
+      "expected_discovery_readiness": "ready_if_other_framing_complete"
+    },
+    {
+      "id": 3,
+      "intent": "learning_prototype",
+      "scenario": "a bounded clone built to learn OCR/evaluation with a non-commercial boundary and commercial revisit trigger",
+      "should_activate_gates": true,
+      "expected_product_justification_state": "bypassed_learning",
+      "expected_discovery_readiness": "ready_if_verifiability_approved"
+    },
+    {
+      "id": 4,
+      "intent": "production_commercial",
+      "scenario": "regulated multi-user workflow with persistence, system-of-record actions, audit/recovery evidence, and measurable outcome oracles",
+      "should_activate_gates": true,
+      "expected_product_justification_state": "approved",
+      "expected_discovery_readiness": "ready_if_other_framing_complete"
+    },
+    {
+      "id": 5,
+      "intent": "production_commercial",
+      "scenario": "direct-model execution is unavailable and no current baseline evidence is supplied",
+      "should_activate_gates": true,
+      "expected_product_justification_state": "blocked",
+      "expected_discovery_readiness": "not_ready"
+    },
+    {
+      "id": 6,
+      "intent": "production_commercial",
+      "scenario": "subjective coaching outcome has no automatic oracle but has a named evaluator, blinded rubric, disagreement handling, and rollback boundary",
+      "should_activate_gates": true,
+      "expected_product_justification_state": "approved",
+      "expected_discovery_readiness": "ready_if_other_framing_complete"
+    },
+    {
+      "id": 7,
+      "intent": "not_applicable",
+      "scenario": "fix an incorrect loading state in an understood existing dashboard",
+      "should_activate_gates": false,
+      "expected_product_justification_state": "not_applicable_skip",
+      "expected_discovery_readiness": "ordinary_scoped_workflow"
+    }
+  ]
+}
