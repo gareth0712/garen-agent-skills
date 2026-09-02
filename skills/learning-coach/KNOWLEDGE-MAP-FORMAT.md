@@ -1,6 +1,6 @@
 # KNOWLEDGE-MAP.md 格式
 
-Written in Phase 1, appended in Phase 2. One file per topic.
+Written in Phase 2, appended in Phase 3. One file per topic.
 
 ```markdown
 # <主題> 知識地圖
