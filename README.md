@@ -54,6 +54,7 @@ Skills are grouped by theme below. The **Invoke** column shows how each one fire
 | [non-violent-communication](skills/non-violent-communication/) | 🤖 | Rewrites drafts (emails, messages, reviews) using Marshall Rosenberg's NVC framework — turning blame and judgment into observation / feeling / need / request. |
 | [japanese-learning](skills/japanese-learning/) | 🤖 | Scans any Japanese text you write for errors and returns corrections with 【日語修正】 labels; also answers "how do you say X in Japanese" questions. |
 | [teach](skills/teach/) | 👤 | Teaches you a new skill or concept within the current workspace. |
+| [learning-coach](skills/learning-coach/) | 🤖 | Socratic coach for taking a new domain from 看懂 to 能自己推理 — builds a knowledge map, surfaces the real expert controversies, then examines you one question at a time and debugs the broken link in your reasoning rather than handing over the answer. Keeps a persistent error bank and spaced-review schedule on disk across sessions. |
 | [handoff](skills/handoff/) | 👤 | Compacts the current conversation into a handoff document so a fresh agent can pick up the work. |
 
 ## Usage
