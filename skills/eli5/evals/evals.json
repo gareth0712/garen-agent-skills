@@ -1,0 +1,48 @@
+{
+  "skill_name": "eli5",
+  "evals": [
+    {
+      "id": 1,
+      "name": "explain-ledger-table-to-dev",
+      "prompt": "We store each user's points as a single `points_balance` column on `users`. A teammate says we need a `point_ledger` table instead. Explain to me why we need a ledger table.",
+      "expected_output": "An explanation that opens with a concrete case (a named user, literal rows with literal point values) showing what goes wrong with only a balance column and what the ledger rows look like, before stating the general rule.",
+      "files": [],
+      "expectations": [
+        "The output contains at least one literal table row (a markdown table row or a code block row) with concrete values, e.g. a user id, an amount like +100 or -30, and a reason or timestamp",
+        "The output shows a before/after or bad/good comparison using the SAME input (e.g. the same user and the same sequence of events with only a balance column vs with a ledger)",
+        "Numbers in the example add up (e.g. ledger rows sum to the stated balance)",
+        "A named actor or a named user id appears in the example",
+        "The first concrete example appears before any sentence stating the general rule (e.g. 'a ledger gives you an audit trail')",
+        "The output names who is affected in human terms (e.g. a user who disputes their balance, support who cannot answer them)"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "pm-question-refund-window",
+      "prompt": "Draft a question to our PM: when a user buys a pack and then gets a refund, should the loyalty points they earned from that purchase be clawed back? Right now I built it so points stay. Keep it short enough for Slack.",
+      "expected_output": "A Slack-ready question in the Situation / Options / Default I built / Why I need you / question order, with one named user and real numbers run through each option.",
+      "files": [],
+      "expectations": [
+        "The output contains a Situation part describing what exists today with one concrete case",
+        "The output contains at least two Options, and each option runs the SAME example (same user, same amounts) to a different outcome",
+        "The output contains a 'Default I built' line stating that points currently stay",
+        "The output contains a 'Why I need you' part naming what changes if the answer differs (e.g. money, schema, user balance going negative, who is affected)",
+        "The example names an actor (e.g. Alice) and uses literal numbers (a purchase amount and a points amount)",
+        "The final question is 25 words or fewer"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "readme-section-for-script",
+      "prompt": "Write the README section for this script: `scripts/rotate-logs.sh <dir> <days>` deletes `*.log` files in <dir> older than <days> days and prints one line per deleted file plus a summary line with the count and freed bytes. It exits 1 if <dir> does not exist.",
+      "expected_output": "A README section that opens with the literal command and its literal output (per-file lines and a summary with concrete numbers) before any prose describing the behaviour.",
+      "files": [],
+      "expectations": [
+        "The first code block in the section is a literal invocation with concrete arguments (e.g. `scripts/rotate-logs.sh /var/log/app 7`), not a placeholder-only usage line",
+        "A literal output block with concrete file names and a summary line with a concrete count and byte number appears before any prose rule describing what the script does",
+        "The failure case is shown with its literal input and result (a missing directory and exit code 1), not only described",
+        "No paragraph of general description precedes the first command block"
+      ]
+    }
+  ]
+}
