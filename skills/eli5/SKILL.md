@@ -5,59 +5,73 @@ description: Lead every human-facing piece of writing with one real, concrete ex
 
 # ELI5 - example first, rule second
 
-The owner of this skill does not learn from rules; he learns from watching one
-concrete case run. Neither do most readers. A PM handed "assembly reserves a unit
-locally" asked "is it my English?" - she could not picture it, so she could not
-answer it, and the owner could not judge the question either. The fix is the same
-for every reader: show one case with literal values, then name the rule.
+The owner of this skill learns from watching one concrete case run, not from rules.
+So do most readers. A PM handed "assembly reserves a unit locally" asked "is it my
+English?" - she could not picture it, so could not answer. Show one case with
+literal values, then name the rule.
 
-**Scope: every output a human will read**, not only explanations to the user.
-Questions to stakeholders, README and docs, PR descriptions, review and ticket
-comments, commit bodies that explain a decision, handoff notes, status updates.
-"It is a deliverable for someone else" is the exact reasoning that caused the failure
-above - it is not an exemption.
+**Scope: every output a human will read**, including deliverables for third parties
+(stakeholder questions, README/docs, PR descriptions, review and ticket comments,
+commit bodies, handoff notes, status updates). "It is for someone else" is not an
+exemption; it caused the failure above.
 
 **Default reader:** a careful colleague who knows the domain but did not watch the
-work. Adjust with `references/audience.md` when the reader is named (PM, legal, a
-parent, a new hire). Write in the reader's language.
+work; adjust with `references/audience.md` when named. Write in their language.
 
-## The six rules
+## The rules
 
-1. **Lead with one real, concrete example, then the rule.** Real names from the repo
-   or product (`users.created_at`, Pack A, tier 3), 2-3 literal rows or values, the
-   literal command or request and what it returns, a timeline ("10:00:01 lock taken...
-   10:03:40 released"). Money and points in real numbers you can add up ($70 x 85% =
-   $59.50), never N and M. No real figure at hand? Use a plausible one and label it
-   ("e.g., numbers illustrative") rather than dropping the example.
-2. **Show the bad case and the good case side by side**, with the same input:
-   "without the fix, Bob's ETB sells back at X; with it, at Y."
-3. **Name who is affected in human terms**: "every checkout in those 4 minutes awards
-   no points", not "writes are blocked".
-4. **One example per concept.** If it did not land, give a second, *different* example.
-   Never reword the first.
-5. **Define a term by showing it**: the two statements, the rows they touch, the
-   moment each happens.
-6. **Only after the example**, state the general rule in 1-2 sentences.
+1. **Lead with one real, concrete example, then the rule.** Real names, 2-3 literal
+   rows or values, the literal command and its output, a timeline. Money in numbers
+   you can add up ($70 x 85% = $59.50), never N and M. No real figure? Label a
+   plausible one "illustrative".
+2. **Bad case beside good case**, same input.
+3. **Name who is affected in human terms**: "checkouts in those 4 minutes award no
+   points", not "writes are blocked".
+4. **One example per concept.** If it did not land, give a *different* second example,
+   never a reworded first.
+5. **Define a term by showing it**, once, in parentheses, where it first bites:
+   "(ref value follows the highest valued product)".
+6. **State the general rule only after the example**, in 1-2 sentences.
+
+## Walking through steps
+
+Numbered scenarios are where readers get lost; each rule closes a real gap.
+
+7. **Every pronoun is a bug.** "Edits it" had two referents (the tier's field, or
+   product B's price). Name the field and actor each time: "sets the ref value of
+   Tier 2.5 to $48".
+8. **After each step, print the resulting state**: "-> ref value of T2.5 becomes $50".
+   The reader never computes. A step changing no state earns no line.
+9. **Pick numbers the reader can do in their head**: small, round, distinct, with the
+   derived number obvious ($48 -> 480 fragments, not $160 -> 1600 beside $165 -> 1650).
+10. **Show the knock-on effect on neighbours** as before -> after: a new tier forces
+    other drop weights to move (50->40, 30->25, 0->20, 20->15; sums to 100). Stopping
+    at the thing itself omits what the reader must do.
+11. **If the reader could imagine a scary case, name it and close it**: "no machine can
+    drop T2.5 fragments before Confirm" is what rules out a user seeing 12/165 turn
+    into 12/160. "Warning only" needs a literal pair: "won't block a $80 product in a
+    $40 tier".
+12. **Use the reader's vocabulary** (her spec ids SC-02, her words "confirmed", "drop
+    weight"), not internal names (`reference_overridden`, `confirmed_at`).
 
 ## Shapes by output type
 
-- **Question to a stakeholder** - always this order:
-  **Situation** (what exists today, one concrete case with a named actor and numbers)
-  -> **Options** (run the SAME example through each, showing the different outcome)
-  -> **Default I built** (one line) -> **Why I need you** (what changes if the answer
-  differs: schema, money, legal, who is affected) -> **the question, 25 words or fewer**.
-- **README / docs** - open with the literal command and its literal output, then the
-  prose.
-- **PR description / commit body** - one before/after with the same input.
-- **Review or ticket comment** - the input that breaks it, what happens now, what
+- **Question to a stakeholder:** **Situation** (one case, named actor, numbers) -> **Options** (run the SAME example through each) -> **Default I built**
+  (one line) -> **Why I need you** (what changes per answer) -> **the
+  question, 25 words or fewer**. Close the loop: "Does this align with your spec? If yes, I will update
+  SC-02 and SC-13 as follows..." - the reply is one word.
+- **README / docs:** literal command and output first, then prose.
+- **PR / commit body:** one before/after with the same input.
+- **Review or ticket comment:** the input that breaks it, what happens now, what
   should happen.
 
-Worked bad/good pairs, including the real PM questions: `references/examples.md`.
+Worked bad/good pairs, incl. the T2.5 tier example: `references/examples.md`.
 
 ## Stop check before sending
 
-Scan the draft. If an explanation or question has **no literal value, no table, no
-timeline, and no before/after**, it has failed - stop and rewrite it with one. A
-clearer rewording of a rule is still a rule.
+1. No literal value, table, timeline or before/after? It failed - add one. A clearer
+   rewording of a rule is still a rule.
+2. Read each sentence and ask: **could the reader point at the row, field or person
+   this refers to?** If "it", "that" or "the value" could mean two things, rewrite.
 
-Skip only what is genuinely obvious in one sentence ("renamed `foo` to `bar`").
+Skip only the obvious.

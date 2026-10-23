@@ -43,6 +43,22 @@
         "The failure case is shown with its literal input and result (a missing directory and exit code 1), not only described",
         "No paragraph of general description precedes the first command block"
       ]
+    },
+    {
+      "id": 4,
+      "name": "pm-walkthrough-tier-confirm-lock",
+      "prompt": "explain to the PM that a fragment tier now locks when an admin confirms it, not when fragments are first issued",
+      "expected_output": "A numbered walkthrough where each step ends in the resulting state, with a small worked example (e.g. $48 -> 480 fragments), the knock-on change to other tiers' drop weights, an impossible case named and closed, and a closing 'Does this align... if yes I will...' line.",
+      "files": [],
+      "expectations": [
+        "The output is a numbered list of steps and each step ends with the resulting state (e.g. '-> the ref value of T2.5 becomes $50'), not only an action",
+        "No bare 'it' or 'the value' refers to a field or object when two referents are possible; the field and actor are named (e.g. 'sets the ref value of Tier 2.5 to $48')",
+        "A derived number is stated explicitly with small round inputs (e.g. $48 -> 480 fragments)",
+        "A neighbour side-effect is shown as a before -> after list or table (e.g. drop weights changing across tiers and summing to 100)",
+        "An impossible or scary case is named and closed with the reason (e.g. no machine can drop the tier's fragments before Confirm, so a user cannot hold fragments toward a value that later changes)",
+        "The mechanism is defined once, inline, where it first matters (e.g. '(ref value follows the highest valued product)')",
+        "The closing line asks 'Does this align with ...?' and states what the sender will do on a yes (e.g. which spec scenarios will be updated)"
+      ]
     }
   ]
 }
