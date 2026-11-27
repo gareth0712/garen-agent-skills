@@ -19,6 +19,7 @@ Skills are grouped by theme below. The **Invoke** column shows how each one fire
 | [pr-review-replies](skills/pr-review-replies/) | 🤖 | Closes the loop on PR review comments (Copilot or human): judge each one, fix it, push, re-run the repo's merge gate, then reply in that thread with the commit hash that fixed it and resolve it — without asking first. |
 | [ai-council](skills/ai-council/) | 🤖 | Evaluates a single idea, decision, or plan through five contrasting advisors (Contrarian Skeptic, First-Principles Engineer, Expansionist, Outsider, Executor), cross-critiques them, and delivers a Chairman's verdict: 1-hour decision, primary risk, #1 action. For A-vs-B technical choices use garen-debate instead. |
 | [grill-me](skills/grill-me/) | 👤 | Manual-invoke version of the same relentless plan/design interview. |
+| [table-viewer](skills/table-viewer/) | 🤖 | Builds a row-table viewer page (search, sort, count chips, star/note, bulk actions) in any repo: reads the repo, asks every open question in one batched round, gets a one-page spec approved, builds in layers, then verifies in a real browser. |
 
 ### Building & improving skills
 
