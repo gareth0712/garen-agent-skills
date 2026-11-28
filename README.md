@@ -59,6 +59,13 @@ Skills are grouped by theme below. The **Invoke** column shows how each one fire
 | [learning-coach](skills/learning-coach/) | 🤖 | Socratic coach for taking a new domain from 看懂 to 能自己推理 — builds a knowledge map, surfaces the real expert controversies, then examines you one question at a time and debugs the broken link in your reasoning rather than handing over the answer. Keeps a persistent error bank and spaced-review schedule on disk across sessions. |
 | [handoff](skills/handoff/) | 👤 | Compacts the current conversation into a handoff document so a fresh agent can pick up the work. |
 
+### Media
+
+| Skill | Invoke | What it does |
+|-------|:------:|--------------|
+| [iso-to-mp4](skills/iso-to-mp4/) | 🤖 | Runbook for converting Blu-ray / UHD / DVD ISOs to MP4: survey, subtitle pick, pre-convert hole scan, convert, verify, review page, file. Bundles verify / hole-scan / review scripts and a dated learnings log. |
+| [jellyfin-media-naming](skills/jellyfin-media-naming/) | 🤖 | Names and files finished movies and series for a Jellyfin library (English + Hong Kong Chinese title, year, tags); bundles a dry-run-first move planner with a manifest and undo. |
+
 ## Usage
 
 Consume this repo with the [`skills`](https://www.npmjs.com/package/skills) CLI:
